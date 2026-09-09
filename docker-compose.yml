@@ -1,0 +1,52 @@
+services:
+  n8n:
+    build:
+      context: ./docker
+      dockerfile: Dockerfile
+    image: midas-n8n:local
+    container_name: midas-n8n
+    restart: unless-stopped
+    ports:
+      - "5678:5678"
+    environment:
+      GENERIC_TIMEZONE: Asia/Jakarta
+      TZ: Asia/Jakarta
+      N8N_SECURE_COOKIE: "false"
+      NODES_EXCLUDE: "[]"
+      N8N_ENCRYPTION_KEY: "${N8N_ENCRYPTION_KEY}"
+      N8N_USER_FOLDER: /home/node/.n8n
+      N8N_LOG_LEVEL: info
+      EXECUTIONS_DATA_SAVE_ON_ERROR: all
+      EXECUTIONS_DATA_SAVE_ON_SUCCESS: all
+      EXECUTIONS_DATA_SAVE_MANUAL_EXECUTIONS: "true"
+    volumes:
+      - ./docker/n8n-data:/home/node/.n8n
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:5678/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    container_name: midas-tunnel
+    restart: unless-stopped
+    command: tunnel --no-autoupdate --url http://n8n:5678
+    depends_on:
+      - n8n
+
+  webhook-sync:
+    image: docker:cli
+    container_name: midas-webhook-sync
+    restart: unless-stopped
+    depends_on:
+      - tunnel
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./docker/sync-webhook.sh:/usr/local/bin/sync-webhook.sh:ro
+    environment:
+      BOT_TOKEN: "8739615976:AAHKY58pJU_-zniOHvRz93-7H-9neg3TL-Y"
+    entrypoint: ["/bin/sh", "/usr/local/bin/sync-webhook.sh"]

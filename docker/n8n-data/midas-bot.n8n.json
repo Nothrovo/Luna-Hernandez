@@ -1,0 +1,3167 @@
+{
+  "id": "RzqHFpZWsPL7CsM1",
+  "name": "Luna Hernandez — Realtime Webhook Assistant",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "midas-bot",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "W0001",
+      "name": "Telegram Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -1000,
+        0
+      ],
+      "webhookId": "midas-bot"
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{\n  json: {\n    timezone: 'Asia/Jakarta',\n    telegramChatId: '1536791393',\n    botToken: '8739615976:AAHKY58pJU_-zniOHvRz93-7H-9neg3TL-Y',\n    ollamaBaseUrl: 'http://host.docker.internal:11434',\n    ollamaModel: 'qwen3.5:2b',\n    sqlitePath: '/home/node/.n8n/crypto_decision_support.sqlite',\n    geminiApiKey: 'AQ.Ab8RN6Jvs4yGhGg8RsBHTIvEhaF88qWdX7pXWoH5b--AspiBsw',\n    geminiModel: 'gemini-3.5-flash-lite',\n    quoteCurrency: 'idr',\n    marketDays: 60,\n    technicalWeights: { rsi: 0.25, macd: 0.30, bollinger: 0.25, volatility: 0.10, trend: 0.10 },\n    decisionWeights: { sentiment: 0.40, technical: 0.60 },\n    thresholds: { buy: 0.20, sell: -0.20 },\n  },\n}];"
+      },
+      "id": "W0002",
+      "name": "Config",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -700,
+        0
+      ],
+      "notesInFlow": true,
+      "notes": "Config bot token & chat ID."
+    },
+    {
+      "parameters": {
+        "jsCode": "const cfg = $('Config').first().json;\nconst raw = $('Telegram Webhook').first().json;\n\n// Ekstrak pesan Telegram dari berbagai struktur webhook n8n\nconst body = raw.body || raw;\nconst msg = body.message || body.channel_post || body.edited_message || raw;\n\nif (!msg || !msg.text) {\n  return [{ json: { hasCommand: false, command: '__none__' } }];\n}\n\n// Cek chat ID pengirim (hanya izinkan chat terdaftar)\nconst senderChatId = msg.chat ? msg.chat.id : (raw.chat ? raw.chat.id : null);\nif (String(senderChatId) !== String(cfg.telegramChatId)) {\n  return [{ json: { hasCommand: false, command: '__none__' } }];\n}\n\nconst text = msg.text.trim();\nlet command = '__none__', args = '';\n\nif (text.startsWith('/')) {\n  const parts = text.slice(1).split(/\\s+/);\n  command = parts[0].toLowerCase().split('@')[0];\n  args = parts.slice(1).join(' ').trim();\n} else {\n  // Jika user mengetik pesan biasa tanpa tanda '/', otomatis anggap sebagai /ask\n  command = 'ask';\n  args = text;\n}\n\n// Alias command\nif (command === 'signal' || command === 'signals' || command === 'porto') command = 'portfolio';\nif (command === 'recommendation' || command === 'rekomendasi') command = 'rec';\nif (command === 'status') command = 'stat';\n\nlet coinArg = '', modalArg = 100000;\nif (args) {\n  const parts = args.split(/\\s+/);\n  coinArg = parts[0] ? parts[0].trim().toUpperCase() : '';\n  if (parts[1]) {\n    let m = parts[1].toLowerCase().replace(/[,._]/g, '');\n    if (m.endsWith('k')) m = parseFloat(m) * 1000;\n    else if (m.endsWith('jt') || m.endsWith('m') || m.endsWith('juta')) m = parseFloat(m) * 1000000;\n    else m = parseFloat(m);\n    if (Number.isFinite(m) && m > 0) modalArg = m;\n  }\n}\n\nreturn [{ json: {\n  command,\n  args,\n  coinArg,\n  modalArg,\n  from: (msg.from && msg.from.first_name) || 'Trader',\n  chatId: senderChatId,\n  hasCommand: command !== '__none__',\n  rawText: text,\n  botToken: cfg.botToken,\n} }];"
+      },
+      "id": "W0005",
+      "name": "Parse Incoming Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -400,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.hasCommand }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "W0006",
+      "name": "Has Command?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -160,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "rules",
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.command }}",
+                    "rightValue": "coin",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "coin"
+            },
+            {
+              "conditions": {
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.command }}",
+                    "rightValue": "ask",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "ask"
+            },
+            {
+              "conditions": {
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.command }}",
+                    "rightValue": "portfolio",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "portfolio"
+            },
+            {
+              "conditions": {
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.command }}",
+                    "rightValue": "market",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "market"
+            },
+            {
+              "conditions": {
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.command }}",
+                    "rightValue": "history",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "history"
+            },
+            {
+              "conditions": {
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.command }}",
+                    "rightValue": "start",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "start"
+            },
+            {
+              "conditions": {
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.command }}",
+                    "rightValue": "help",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "help"
+            },
+            {
+              "conditions": {
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.command }}",
+                    "rightValue": "buy",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "buy"
+            },
+            {
+              "conditions": {
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.command }}",
+                    "rightValue": "sell",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "sell"
+            },
+            {
+              "conditions": {
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.command }}",
+                    "rightValue": "stat",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "stat"
+            },
+            {
+              "conditions": {
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.command }}",
+                    "rightValue": "rec",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "rec"
+            }
+          ]
+        },
+        "fallbackOutput": "extra"
+      },
+      "id": "W0007",
+      "name": "Command Router",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        100,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const update = $('Parse Incoming Message').first().json;\nconst cfg = $('Config').first().json;\nconst userName = update.from || 'Trader';\n\nconst msg = [\n  '👋 <b>Halo ' + userName + '! Gue Luna Hernandez.</b>',\n  'Asisten decision support & riset crypto personal lo.',\n  '',\n  'Gue di sini buat bantu lo menganalisis pasar sebelum eksekusi, baik koin besar (BTC/ETH) maupun koin gorengan/altcoin cepat.',\n  '',\n  '🚀 <b>Fitur Utama Luna Hernandez Bot:</b>',\n  '',\n  '1️⃣ <b>Deep Analysis Koin</b> <code>/coin &lt;simbol&gt;</code>',\n  'Hitung teknikal komprehensif (RSI, MACD, BB, ADX, SMA20), <b>browsing 10 berita Google News live</b>, histori SQLite, & dirangkum AI Gemini.',\n  '👉 <i>Coba:</i> <code>/coin sol</code>, <code>/coin aero</code>, <code>/coin btc</code>',\n  '',\n  '2️⃣ <b>Riset Bebas Live + Memori</b> <code>/ask &lt;pertanyaan&gt;</code>',\n  'Tanya kondisi pasar atau sentimen. Bot <b>browsing Google News live</b> + <b>ingat percakapan sebelumnya</b>.',\n  '👉 <i>Coba:</i> <code>/ask bagaimana peluang swing trading minggu ini?</code>',\n  '',\n  '3️⃣ <b>Radar Pasar & Rekomendasi</b>',\n  '• <code>/rec</code> — 3 rekomendasi koin pullback sehat untuk swing entry',\n  '• <code>/market</code> — Top 5 gainers & losers 24 jam dalam IDR',\n  '',\n  '4️⃣ <b>Manajemen Posisi & Portofolio</b>',\n  '• <code>/buy &lt;simbol&gt; [modal]</code> — Catat beli & pantau ketat (e.g. <code>/buy sol 150k</code>)',\n  '• <code>/stat &lt;simbol&gt;</code> — Evaluasi posisi: PnL, rekomendasi Hold/TP/SL/DCA',\n  '• <code>/sell &lt;simbol&gt;</code> — Tutup posisi, hitung PnL, & unlist dari pantauan',\n  '• <code>/portfolio</code> — Ringkasan koin aktif, total modal, & PnL portofolio',\n  '• <code>/history &lt;simbol&gt;</code> — Cek riwayat analisis tersimpan',\n  '',\n  '🔔 <i>Auto-Alert: Bot otomatis cek setiap 2 jam dan kirim notifikasi saat TP/SL tersentuh!</i>',\n  '⚠️ <i>Decision support only, bukan saran finansial.</i>',\n  '',\n  'Ketik <code>/help</code> kapan saja untuk melihat ringkasan perintah.',\n].join('\\n');\n\nreturn [{ json: { telegramMessage: msg, chatId: cfg.telegramChatId, botToken: cfg.botToken } }];"
+      },
+      "id": "B1000",
+      "name": "Build Start",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        380,
+        550
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $json.botToken || $('Config').first().json.botToken }}/sendMessage",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ chat_id: $json.chatId || $('Config').first().json.telegramChatId, text: $json.telegramMessage, parse_mode: \"HTML\", disable_web_page_preview: true }) }}",
+        "options": {
+          "timeout": 15000,
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "B1003",
+      "name": "Send Start",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        620,
+        550
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const msg = [\n  '📖 <b>Daftar Perintah Luna Hernandez Bot</b>',\n  '',\n  '🎯 <b>Riset & Rekomendasi:</b>',\n  '• <code>/rec</code> — Rekomendasi 3 koin pullback sehat untuk swing entry',\n  '• <code>/coin &lt;simbol&gt;</code> — Deep analysis: RSI, MACD, Tren, Berita Live, & AI',\n  '• <code>/ask &lt;pertanyaan&gt;</code> — Riset bebas Google News Live + Memori obrolan',\n  '• <code>/market</code> — Top 5 gainers & losers 24 jam (IDR)',\n  '',\n  '💼 <b>Portofolio & Posisi Aktif:</b>',\n  '• <code>/buy &lt;simbol&gt; [modal]</code> — Catat beli & pantau ketat (e.g. <code>/buy sol 150k</code>)',\n  '• <code>/stat &lt;simbol&gt;</code> — Evaluasi posisi: PnL, rekomendasi Hold/TP/SL/DCA',\n  '• <code>/sell &lt;simbol&gt;</code> — Tutup posisi, hitung PnL, keluarkan dari pantauan',\n  '• <code>/portfolio</code> — Ringkasan koin aktif, total modal, & PnL portofolio',\n  '• <code>/history [simbol]</code> — Riwayat analisis tersimpan di database lokal',\n  '• <code>/start</code> — Panduan interaktif & tutorial lengkap',\n  '',\n  '🔔 <i>Auto-Alert: Bot otomatis cek berkala dan kirim alert jika menyentuh TP/SL!</i>',\n  '⚠️ <i>Decision support only. Bukan saran finansial.</i>',\n].join('\\n');\nconst cfg = $('Config').first().json;\nreturn [{ json: { telegramMessage: msg, chatId: cfg.telegramChatId, botToken: cfg.botToken } }];"
+      },
+      "id": "B1001",
+      "name": "Build Help",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        380,
+        700
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $json.botToken || $('Config').first().json.botToken }}/sendMessage",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ chat_id: $json.chatId || $('Config').first().json.telegramChatId, text: $json.telegramMessage, parse_mode: \"HTML\", disable_web_page_preview: true }) }}",
+        "options": {
+          "timeout": 15000,
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "B1002",
+      "name": "Send Help",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        620,
+        700
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "url": "=https://api.coingecko.com/api/v3/search?query={{ encodeURIComponent($json.args) }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "B2001",
+      "name": "CoinGecko Search",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        380,
+        -800
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 3000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\nconst update = $('Parse Incoming Message').first().json;\nconst cfg = $('Config').first().json;\nconst query = update.args.toLowerCase().trim();\nconst coins = data.coins || [];\nlet coin = coins.find(c => c.symbol?.toLowerCase() === query);\nif (!coin) coin = coins.find(c => c.name?.toLowerCase() === query);\nif (!coin && coins.length > 0) coin = coins[0];\nif (!coin) {\n  return [{ json: {\n    __error: true,\n    telegramMessage: '❌ Koin <b>' + query.toUpperCase() + '</b> tidak ditemukan.\\nCoba: /coin sol, /coin aero, /coin btc',\n    chatId: cfg.telegramChatId, botToken: cfg.botToken,\n  }}];\n}\nreturn [{ json: {\n  coinId: coin.id, coinSymbol: coin.symbol.toUpperCase(), coinName: coin.name,\n  command: update.command, args: update.args, chatId: cfg.telegramChatId, botToken: cfg.botToken,\n}}];"
+      },
+      "id": "B2002",
+      "name": "Extract Coin ID",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        620,
+        -800
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $json.botToken || $('Config').first().json.botToken }}/sendMessage",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ chat_id: $json.chatId || $('Config').first().json.telegramChatId, text: $json.telegramMessage, parse_mode: \"HTML\", disable_web_page_preview: true }) }}",
+        "options": {
+          "timeout": 15000,
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "B2008",
+      "name": "Send Coin Error",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        620,
+        -960
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "url": "=https://api.coingecko.com/api/v3/coins/{{ $json.coinId }}/market_chart?vs_currency={{ $('Config').first().json.quoteCurrency }}&days={{ $('Config').first().json.marketDays }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "B2003",
+      "name": "CoinGecko Market Chart",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        860,
+        -800
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 3000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "url": "=https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency={{ $('Config').first().json.quoteCurrency }}&days={{ $('Config').first().json.marketDays }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "B2018",
+      "name": "Fetch BTC Gate",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1100,
+        -800
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 3000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst clamp = (x, lo = -1, hi = 1) => Math.max(lo, Math.min(hi, x));\nconst mean = v => v.reduce((s, x) => s + x, 0) / v.length;\nconst std = v => { const m = mean(v); return Math.sqrt(v.reduce((s, x) => s + (x - m) ** 2, 0) / v.length); };\nfunction ema(vals, period) {\n  const out = Array(vals.length).fill(null);\n  if (vals.length < period) return out;\n  let cur = mean(vals.slice(0, period)); out[period - 1] = cur;\n  const k = 2 / (period + 1);\n  for (let i = period; i < vals.length; i++) { cur = vals[i] * k + cur * (1 - k); out[i] = cur; }\n  return out;\n}\nfunction rsiWilder(vals, period = 14) {\n  if (vals.length <= period) return 50;\n  let g = 0, l = 0;\n  for (let i = 1; i <= period; i++) { const d = vals[i] - vals[i - 1]; g += Math.max(d, 0); l += Math.max(-d, 0); }\n  let ag = g / period, al = l / period;\n  for (let i = period + 1; i < vals.length; i++) {\n    const d = vals[i] - vals[i - 1];\n    ag = (ag * (period - 1) + Math.max(d, 0)) / period;\n    al = (al * (period - 1) + Math.max(-d, 0)) / period;\n  }\n  return al === 0 ? 100 : 100 - 100 / (1 + ag / al);\n}\nfunction macdCalc(vals) {\n  const n = vals.length;\n  const slow = Math.min(26, Math.floor(n * 0.4)), fast = Math.min(12, Math.floor(slow * 0.46)), sig = Math.min(9, Math.floor(fast * 0.75));\n  const fe = ema(vals, fast), se = ema(vals, slow);\n  const line = vals.map((_, i) => fe[i] != null && se[i] != null ? fe[i] - se[i] : null).filter(v => v != null);\n  if (line.length < sig) return { line: 0, signal: 0, histogram: 0 };\n  const sl = ema(line, sig);\n  return { line: line.at(-1), signal: sl.at(-1), histogram: line.at(-1) - sl.at(-1) };\n}\nfunction bollingerCalc(vals) {\n  const p = Math.min(20, vals.length);\n  const w = vals.slice(-p), mid = mean(w), dev = std(w);\n  return { middle: mid, upper: mid + 2 * dev, lower: mid - 2 * dev };\n}\nfunction annualVol(vals) {\n  const r = []; for (let i = 1; i < vals.length; i++) r.push(Math.log(vals[i] / vals[i - 1]));\n  return std(r) * Math.sqrt(365);\n}\nfunction sma(vals, period) {\n  if (!vals || vals.length < period) return null;\n  return vals.slice(-period).reduce((s, x) => s + x, 0) / period;\n}\nfunction atr(highs, lows, closes, period = 14) {\n  if (!highs || highs.length < 2) return (closes.at(-1) || 0) * 0.03;\n  const trs = [];\n  for (let i = 1; i < highs.length; i++) {\n    trs.push(Math.max(highs[i] - lows[i], Math.abs(highs[i] - closes[i-1]), Math.abs(lows[i] - closes[i-1])));\n  }\n  const p = Math.min(period, trs.length);\n  return trs.slice(-p).reduce((s, x) => s + x, 0) / p;\n}\nfunction adx(highs, lows, closes, period = 14) {\n  if (!highs || highs.length < period + 2) return 0;\n  const plusDM = [], minusDM = [], trs = [];\n  for (let i = 1; i < highs.length; i++) {\n    const up = highs[i] - highs[i-1], dn = lows[i-1] - lows[i];\n    plusDM.push(up > dn && up > 0 ? up : 0);\n    minusDM.push(dn > up && dn > 0 ? dn : 0);\n    trs.push(Math.max(highs[i]-lows[i], Math.abs(highs[i]-closes[i-1]), Math.abs(lows[i]-closes[i-1])));\n  }\n  let sTR = trs.slice(0, period).reduce((s,x)=>s+x,0);\n  let sPDM = plusDM.slice(0, period).reduce((s,x)=>s+x,0);\n  let sMDM = minusDM.slice(0, period).reduce((s,x)=>s+x,0);\n  const dx = [];\n  for (let i = period; i < trs.length; i++) {\n    sTR = sTR - sTR/period + trs[i];\n    sPDM = sPDM - sPDM/period + plusDM[i];\n    sMDM = sMDM - sMDM/period + minusDM[i];\n    const pDI = sTR > 0 ? 100*sPDM/sTR : 0, mDI = sTR > 0 ? 100*sMDM/sTR : 0;\n    const dSum = pDI + mDI;\n    dx.push(dSum > 0 ? 100*Math.abs(pDI-mDI)/dSum : 0);\n  }\n  if (!dx.length) return 0;\n  let adxV = dx.slice(0, Math.min(period, dx.length)).reduce((s,x)=>s+x,0) / Math.min(period, dx.length);\n  for (let i = period; i < dx.length; i++) adxV = (adxV*(period-1)+dx[i])/period;\n  return adxV;\n}\n\nconst rawPrices = $input.first().json.prices || [];\nconst assetSymbol = 'BTC';\nconst dailyBtc = new Map();\nfor (const row of rawPrices) {\n  if (!Array.isArray(row) || row.length < 2) continue;\n  const ts = Number(row[0]), price = Number(row[1]);\n  if (!Number.isFinite(ts) || !Number.isFinite(price) || price <= 0) continue;\n  const d = new Date(ts).toISOString().slice(0, 10);\n  if (!dailyBtc.has(d)) {\n    dailyBtc.set(d, { ts, open: price, high: price, low: price, price });\n  } else {\n    const item = dailyBtc.get(d);\n    item.high = Math.max(item.high, price);\n    item.low = Math.min(item.low, price);\n    item.price = price;\n  }\n}\nconst seriesBtc = [...dailyBtc.values()].sort((a, b) => a.ts - b.ts);\nconst pricesBtc = seriesBtc.map(p => p.price);\nif (pricesBtc.length < 14) return [{ json: { btcGate: 'neutral', btcPrice: 0, btcRsi: 50, btcMacdH: 0, btcVsSma: 0 } }];\nconst btcClose = pricesBtc.at(-1);\nconst btcMacd = macdCalc(pricesBtc);\nconst btcRsi = rsiWilder(pricesBtc, Math.min(14, pricesBtc.length - 1));\nconst btcSma20 = sma(pricesBtc, Math.min(20, pricesBtc.length));\nconst isBull = btcSma20 !== null && btcClose > btcSma20 && btcMacd.histogram > 0;\nconst isBear = btcSma20 !== null && btcClose < btcSma20 && btcMacd.histogram < 0;\nconst gate = isBull ? 'bullish' : isBear ? 'bearish' : 'neutral';\nconst vsSma = btcSma20 ? Number(((btcClose - btcSma20) / btcSma20 * 100).toFixed(1)) : 0;\nreturn [{ json: { btcGate: gate, btcPrice: btcClose, btcRsi: Number(btcRsi.toFixed(1)), btcMacdH: btcMacd.histogram, btcVsSma: vsSma } }];"
+      },
+      "id": "B2019",
+      "name": "BTC Gate",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1340,
+        -800
+      ],
+      "notesInFlow": true,
+      "notes": "Hitung BTC gate signal: bullish/bearish/neutral berdasarkan SMA20 + MACD"
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst clamp = (x, lo = -1, hi = 1) => Math.max(lo, Math.min(hi, x));\nconst mean = v => v.reduce((s, x) => s + x, 0) / v.length;\nconst std = v => { const m = mean(v); return Math.sqrt(v.reduce((s, x) => s + (x - m) ** 2, 0) / v.length); };\nfunction ema(vals, period) {\n  const out = Array(vals.length).fill(null);\n  if (vals.length < period) return out;\n  let cur = mean(vals.slice(0, period)); out[period - 1] = cur;\n  const k = 2 / (period + 1);\n  for (let i = period; i < vals.length; i++) { cur = vals[i] * k + cur * (1 - k); out[i] = cur; }\n  return out;\n}\nfunction rsiWilder(vals, period = 14) {\n  if (vals.length <= period) return 50;\n  let g = 0, l = 0;\n  for (let i = 1; i <= period; i++) { const d = vals[i] - vals[i - 1]; g += Math.max(d, 0); l += Math.max(-d, 0); }\n  let ag = g / period, al = l / period;\n  for (let i = period + 1; i < vals.length; i++) {\n    const d = vals[i] - vals[i - 1];\n    ag = (ag * (period - 1) + Math.max(d, 0)) / period;\n    al = (al * (period - 1) + Math.max(-d, 0)) / period;\n  }\n  return al === 0 ? 100 : 100 - 100 / (1 + ag / al);\n}\nfunction macdCalc(vals) {\n  const n = vals.length;\n  const slow = Math.min(26, Math.floor(n * 0.4)), fast = Math.min(12, Math.floor(slow * 0.46)), sig = Math.min(9, Math.floor(fast * 0.75));\n  const fe = ema(vals, fast), se = ema(vals, slow);\n  const line = vals.map((_, i) => fe[i] != null && se[i] != null ? fe[i] - se[i] : null).filter(v => v != null);\n  if (line.length < sig) return { line: 0, signal: 0, histogram: 0 };\n  const sl = ema(line, sig);\n  return { line: line.at(-1), signal: sl.at(-1), histogram: line.at(-1) - sl.at(-1) };\n}\nfunction bollingerCalc(vals) {\n  const p = Math.min(20, vals.length);\n  const w = vals.slice(-p), mid = mean(w), dev = std(w);\n  return { middle: mid, upper: mid + 2 * dev, lower: mid - 2 * dev };\n}\nfunction annualVol(vals) {\n  const r = []; for (let i = 1; i < vals.length; i++) r.push(Math.log(vals[i] / vals[i - 1]));\n  return std(r) * Math.sqrt(365);\n}\nfunction sma(vals, period) {\n  if (!vals || vals.length < period) return null;\n  return vals.slice(-period).reduce((s, x) => s + x, 0) / period;\n}\nfunction atr(highs, lows, closes, period = 14) {\n  if (!highs || highs.length < 2) return (closes.at(-1) || 0) * 0.03;\n  const trs = [];\n  for (let i = 1; i < highs.length; i++) {\n    trs.push(Math.max(highs[i] - lows[i], Math.abs(highs[i] - closes[i-1]), Math.abs(lows[i] - closes[i-1])));\n  }\n  const p = Math.min(period, trs.length);\n  return trs.slice(-p).reduce((s, x) => s + x, 0) / p;\n}\nfunction adx(highs, lows, closes, period = 14) {\n  if (!highs || highs.length < period + 2) return 0;\n  const plusDM = [], minusDM = [], trs = [];\n  for (let i = 1; i < highs.length; i++) {\n    const up = highs[i] - highs[i-1], dn = lows[i-1] - lows[i];\n    plusDM.push(up > dn && up > 0 ? up : 0);\n    minusDM.push(dn > up && dn > 0 ? dn : 0);\n    trs.push(Math.max(highs[i]-lows[i], Math.abs(highs[i]-closes[i-1]), Math.abs(lows[i]-closes[i-1])));\n  }\n  let sTR = trs.slice(0, period).reduce((s,x)=>s+x,0);\n  let sPDM = plusDM.slice(0, period).reduce((s,x)=>s+x,0);\n  let sMDM = minusDM.slice(0, period).reduce((s,x)=>s+x,0);\n  const dx = [];\n  for (let i = period; i < trs.length; i++) {\n    sTR = sTR - sTR/period + trs[i];\n    sPDM = sPDM - sPDM/period + plusDM[i];\n    sMDM = sMDM - sMDM/period + minusDM[i];\n    const pDI = sTR > 0 ? 100*sPDM/sTR : 0, mDI = sTR > 0 ? 100*sMDM/sTR : 0;\n    const dSum = pDI + mDI;\n    dx.push(dSum > 0 ? 100*Math.abs(pDI-mDI)/dSum : 0);\n  }\n  if (!dx.length) return 0;\n  let adxV = dx.slice(0, Math.min(period, dx.length)).reduce((s,x)=>s+x,0) / Math.min(period, dx.length);\n  for (let i = period; i < dx.length; i++) adxV = (adxV*(period-1)+dx[i])/period;\n  return adxV;\n}\n\nconst rawPrices = $('CoinGecko Market Chart').first().json.prices || [];\nconst assetSymbol = $('Extract Coin ID').first().json.coinSymbol;\n\n// Parse daily OHLC\nconst daily = new Map();\nfor (const row of (rawPrices || [])) {\n  if (!Array.isArray(row) || row.length < 2) continue;\n  const ts = Number(row[0]), price = Number(row[1]);\n  if (!Number.isFinite(ts) || !Number.isFinite(price) || price <= 0) continue;\n  const d = new Date(ts).toISOString().slice(0, 10);\n  if (!daily.has(d)) {\n    daily.set(d, { ts, open: price, high: price, low: price, price });\n  } else {\n    const item = daily.get(d);\n    item.high = Math.max(item.high, price);\n    item.low = Math.min(item.low, price);\n    item.price = price;\n  }\n}\nconst series = [...daily.values()].sort((a, b) => a.ts - b.ts);\nconst prices = series.map(p => p.price);\nconst highs = series.map(p => p.high);\nconst lows = series.map(p => p.low);\nif (prices.length < 14) throw new Error(assetSymbol + ': data tidak cukup (min 14 titik harian)');\n\nconst rsiPeriod = Math.min(14, prices.length - 1);\nconst currentPrice = prices.at(-1);\nconst rsi = rsiWilder(prices, rsiPeriod);\nconst macdVal = macdCalc(prices);\nconst bands = bollingerCalc(prices);\nconst bw = Math.max(bands.upper - bands.lower, 1e-6);\nconst percentB = clamp((currentPrice - bands.lower) / bw, 0, 1);\nconst vol = annualVol(prices);\n\nconst sma20val = sma(prices, Math.min(20, prices.length));\nconst adxVal = adx(highs, lows, prices, Math.min(14, prices.length - 2));\nconst atrVal = atr(highs, lows, prices, Math.min(14, prices.length - 1));\n\nconst trendUp = sma20val !== null && currentPrice > sma20val && macdVal.histogram > 0;\nconst trendDown = sma20val !== null && currentPrice < sma20val && macdVal.histogram < 0;\nconst trendDir = trendUp ? 1 : trendDown ? -1 : 0;\n\nlet rsiScore = (50 - rsi) / 50;\nif (trendUp && rsi >= 40 && rsi <= 55) {\n  rsiScore = 0.50;\n} else if (trendDown && rsi >= 45 && rsi <= 60) {\n  rsiScore = -0.50;\n}\n\nconst macdNorm = (macdVal.histogram / currentPrice) * 100;\nconst macdScore = clamp(macdNorm / 2, -1, 1);\n\nlet bbScore = 1 - 2 * percentB;\nif (trendUp && percentB >= 0.15 && percentB <= 0.40) {\n  bbScore = 0.60;\n}\n\nconst volScore = -clamp((vol - 0.55) / 0.55, -1, 1);\n\nconst adxMult = adxVal > 25 ? 1.0 : adxVal > 15 ? 0.6 : 0.2;\nconst trendScore = trendDir * adxMult;\n\nconst weights = $('Config').first().json.technicalWeights;\nconst scores = { rsi: rsiScore, macd: macdScore, bollinger: bbScore, volatility: volScore, trend: trendScore };\nconst contribs = Object.fromEntries(Object.keys(weights).map(k => [k, weights[k] * scores[k]]));\nconst technicalScore = Object.values(contribs).reduce((s, x) => s + x, 0);\n\nconst topInd = Object.keys(contribs).reduce((a, b) => Math.abs(contribs[a]) > Math.abs(contribs[b]) ? a : b);\nconst reasons = {\n  rsi: rsi < 30 ? 'RSI oversold (' + rsi.toFixed(0) + ')' : rsi > 70 ? 'RSI overbought (' + rsi.toFixed(0) + ')' : (trendUp && rsi <= 55 ? 'RSI pullback sehat di uptrend (' + rsi.toFixed(0) + ')' : 'RSI netral (' + rsi.toFixed(0) + ')'),\n  macd: macdVal.histogram > 0 ? 'momentum MACD bullish' : 'momentum MACD bearish',\n  bollinger: percentB < 0.2 ? 'harga dekat lower Bollinger Band' : percentB > 0.8 ? 'harga dekat upper Bollinger Band' : 'harga di area tengah Bollinger',\n  volatility: vol > 0.8 ? 'volatilitas sangat tinggi' : vol > 0.55 ? 'volatilitas tinggi' : 'volatilitas moderat',\n  trend: trendUp ? 'uptrend terkonfirmasi SMA20 (ADX ' + adxVal.toFixed(0) + ')' : trendDown ? 'downtrend SMA20 terkonfirmasi' : 'tren tidak jelas/sideways',\n};\nconst topReasons = Object.keys(contribs).sort((a, b) => Math.abs(contribs[b]) - Math.abs(contribs[a])).slice(0, 2).map(k => reasons[k]);\n\n// Swing low 14 hari terakhir → level invalidasi tren\nconst swingLow14 = Math.min(...lows.slice(-14));\n\nconst techResult = {\n  currentPrice, dataPoints: prices.length,\n  priceTimestamp: new Date(series.at(-1).ts).toISOString(),\n  technicalScore: Number(technicalScore.toFixed(6)),\n  topIndicator: topInd, topReasons,\n  indicators: { rsi14: Number(rsi.toFixed(2)), macdHistogram: Number(macdVal.histogram.toFixed(6)), bollingerPercentB: Number(percentB.toFixed(4)), historicalVolatilityAnnualized: Number(vol.toFixed(4)) },\n  indicatorScores: scores, indicatorContributions: contribs,\n  trendDir, adxVal: Number(adxVal.toFixed(1)),\n  sma20: sma20val ? Number(sma20val.toFixed(2)) : null,\n  atrVal: Number(atrVal.toFixed(2)),\n  swingLow14: Number(swingLow14.toFixed(2)),\n  bands: { upper: Number(bands.upper.toFixed(2)), lower: Number(bands.lower.toFixed(2)), middle: Number(bands.middle.toFixed(2)) },\n};\n\nconst btcGate = $('BTC Gate').first().json;\nconst coinCtx = $('Extract Coin ID').first().json;\nreturn [{ json: { ...coinCtx, ...techResult, asset: coinCtx.coinSymbol, btcGate } }];"
+      },
+      "id": "B2004",
+      "name": "Coin Technical",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1580,
+        -800
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ 'https://news.google.com/rss/search?q=' + encodeURIComponent($('Extract Coin ID').first().json.coinName + ' crypto') + '&hl=en&gl=US&ceid=US:en' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 20000,
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          }
+        }
+      },
+      "id": "B2005",
+      "name": "Fetch Google News",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1340,
+        -800
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const xml = ($input.first().json.data || '').toString();\nconst itemBlocks = [...xml.matchAll(/<item>([\\s\\S]*?)<\\/item>/g)];\nconst articles = itemBlocks.slice(0, 10).map(m => {\n  const c = m[1];\n  const title = (c.match(/<title><!\\[CDATA\\[([\\s\\S]*?)\\]\\]>/) || c.match(/<title>([\\s\\S]*?)<\\/title>/))?.[1] || '';\n  const pubDate = c.match(/<pubDate>([\\s\\S]*?)<\\/pubDate>/)?.[1] || '';\n  return {\n    title: title.replace(/&amp;/g,'&').replace(/&#39;/g,\"'\").replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'\"').trim(),\n    pubDate: pubDate.slice(0, 16),\n  };\n}).filter(a => a.title.length > 5);\nconst coinCtx = $('Extract Coin ID').first().json;\nreturn [{ json: { ...coinCtx, newsArticles: articles, newsCount: articles.length } }];"
+      },
+      "id": "B2006",
+      "name": "Parse News",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1580,
+        -800
+      ],
+      "notesInFlow": true,
+      "notes": "Parse Google News RSS, ambil 10 artikel terbaru."
+    },
+    {
+      "parameters": {
+        "jsCode": "const sym = $('Extract Coin ID').first().json.coinSymbol.replace(/'/g,\"''\");\nconst p = $('Config').first().json.sqlitePath;\nconst sql = \"SELECT tanggal, waktu, keputusan, harga, skor_teknikal, ringkasan FROM coin_sessions WHERE simbol='\" + sym + \"' AND tipe='coin' ORDER BY tanggal DESC, id DESC LIMIT 5;\";\nconst dbCmd = \"sqlite3 -separator '|' '\" + p.replace(/'/g,\"'\\\"'\\\"'\") + \"' \\\"\" + sql + \"\\\"\";\nreturn [{ json: { dbCmd } }];"
+      },
+      "id": "B2009",
+      "name": "Prepare Read Prev",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1820,
+        -800
+      ]
+    },
+    {
+      "parameters": {
+        "executeOnce": false,
+        "command": "={{ $json.dbCmd }}"
+      },
+      "id": "B2010",
+      "name": "Read Previous Analysis",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        2060,
+        -800
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = ($input.first().json.stdout || '').trim();\nconst lines = raw.split('\\n').filter(Boolean);\nconst sessions = lines.map(line => {\n  const [tanggal, waktu, keputusan, harga, skor, ringkasan] = line.split('|');\n  return { tanggal, waktu, keputusan, harga: parseFloat(harga) || 0, skor: parseFloat(skor) || 0, ringkasan: ringkasan || '' };\n}).filter(s => s.tanggal);\nconst coinCtx = $('Extract Coin ID').first().json;\nreturn [{ json: { ...coinCtx, previousSessions: sessions } }];"
+      },
+      "id": "B2011",
+      "name": "Parse Previous Analysis",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2300,
+        -800
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const tech = $('Coin Technical').first().json;\nconst newsCtx = $('Parse News').first().json;\nconst prevCtx = $('Parse Previous Analysis').first().json;\nconst cfg = $('Config').first().json;\nconst btcG = tech.btcGate || { btcGate: 'neutral', btcRsi: 50, btcVsSma: 0 };\n\nconst ts = tech.technicalScore;\nconst decision = ts > cfg.thresholds.buy ? 'BUY' : ts < cfg.thresholds.sell ? 'SELL' : 'HOLD';\nconst price = new Intl.NumberFormat('id-ID').format(tech.currentPrice);\nconst trendLabel = tech.trendDir > 0 ? 'UPTREND (SMA20 + MACD bullish)' : tech.trendDir < 0 ? 'DOWNTREND (SMA20 + MACD bearish)' : 'SIDEWAYS/TIDAK JELAS';\nconst adxLabel = (tech.adxVal || 0) > 25 ? 'KUAT (' + tech.adxVal + ')' : (tech.adxVal || 0) > 15 ? 'MODERAT (' + tech.adxVal + ')' : 'LEMAH/SIDEWAYS (' + (tech.adxVal || 0) + ')';\nconst btcLabel = btcG.btcGate === 'bullish' ? '✅ BULLISH (mendukung altcoin)' : btcG.btcGate === 'bearish' ? '⚠️ BEARISH (menekan altcoin)' : '⬜ NETRAL';\n\nconst newsText = (newsCtx.newsArticles || []).length > 0\n  ? newsCtx.newsArticles.map((a, i) => (i + 1) + '. ' + a.title + (a.pubDate ? ' (' + a.pubDate + ')' : '')).join('\\n')\n  : 'Tidak ada berita yang ditemukan.';\n\nconst prevText = (prevCtx.previousSessions || []).length > 0\n  ? prevCtx.previousSessions.slice(0, 3).map(s => {\n      const priceChg = tech.currentPrice > 0 && s.harga > 0\n        ? ' | Harga berubah: ' + ((tech.currentPrice - s.harga) / s.harga * 100).toFixed(1) + '%'\n        : '';\n      return '- ' + s.tanggal + (s.waktu ? ' ' + s.waktu : '') + ': ' + (s.keputusan || '-') + ' (skor ' + s.skor.toFixed(2) + ')' + priceChg + (s.ringkasan ? ' — ' + s.ringkasan.slice(0, 80) : '');\n    }).join('\\n')\n  : 'Belum ada riwayat analisis untuk koin ini.';\n\nconst prompt = [\n  'Kamu adalah analis crypto profesional untuk swing trader Indonesia (target profit mingguan-bulanan).',\n  '',\n  '═══ DATA KOIN ═══',\n  'Koin: ' + tech.coinName + ' (' + tech.coinSymbol + ')',\n  'Harga sekarang: Rp ' + price + ' | Data: ' + tech.dataPoints + ' hari',\n  '',\n  '═══ TEKNIKAL (HYBRID TREND-PULLBACK) ═══',\n  'Skor gabungan: ' + ts.toFixed(3) + ' → sinyal algoritma: ' + decision,\n  'Tren (SMA20+MACD): ' + trendLabel,\n  'Kekuatan tren (ADX): ' + adxLabel,\n  'RSI(14): ' + tech.indicators.rsi14 + (tech.indicators.rsi14 < 30 ? ' ⚠️ OVERSOLD' : tech.indicators.rsi14 > 70 ? ' ⚠️ OVERBOUGHT' : ' (netral)'),\n  'Bollinger %B: ' + tech.indicators.bollingerPercentB.toFixed(2) + (tech.indicators.bollingerPercentB < 0.3 ? ' (dekat lower band — potensi pullback entry)' : tech.indicators.bollingerPercentB > 0.85 ? ' (dekat upper band — harga kejauhan)' : ' (area tengah/aman)'),\n  'Volatilitas: ' + (tech.indicators.historicalVolatilityAnnualized * 100).toFixed(1) + '%/tahun',\n  'Swing Low 14h: Rp ' + new Intl.NumberFormat(\"id-ID\").format(tech.swingLow14 || 0) + ' (level invalidasi tren)',\n  'Driver: ' + (tech.topReasons || []).join(', '),\n  '',\n  '═══ KONTEKS MAKRO BTC ═══',\n  'BTC Gate: ' + btcLabel,\n  'BTC RSI: ' + btcG.btcRsi + ' | BTC vs SMA20: ' + (btcG.btcVsSma > 0 ? '+' : '') + btcG.btcVsSma + '%',\n  '',\n  '═══ BERITA LIVE TERBARU (GOOGLE NEWS) ═══',\n  newsText,\n  '',\n  '═══ HISTORI ANALISIS BOT SEBELUMNYA ═══',\n  prevText,\n  '',\n  '═══ INSTRUKSI ANALISIS ═══',\n  'Tulis analisis singkat, padat, actionable (maksimal 700 karakter):',\n  '1. KESIMPULAN: BUY / HOLD / SELL — jelaskan alasan utamanya (tren + pullback + sentimen berita).',\n  '2. RISIKO: Jika BTC Gate bearish, ingatkan risiko koreksi altcoin meski setup bagus.',\n  '3. STRATEGI SWING: Sebutkan target profit realistis (+10% s/d +15%) dan batas stop loss / invalidasi tren.',\n  '4. Bahasa Indonesia santai profesional, langsung ke poin, TANPA disclaimer panjang di akhir.',\n].join('\\n');\n\nconst geminiBody = {\n  contents: [{ parts: [{ text: prompt }] }],\n  generationConfig: { maxOutputTokens: 2000, temperature: 0.3, thinkingConfig: { thinkingBudget: 512 } },\n};\n\nreturn [{ json: { geminiBody, coinSymbol: tech.coinSymbol, chatId: cfg.telegramChatId, botToken: cfg.botToken } }];"
+      },
+      "id": "B2012",
+      "name": "Prepare Gemini Coin Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2540,
+        -800
+      ],
+      "notesInFlow": true,
+      "notes": "Prompt komprehensif: teknikal + berita + histori -> Gemini"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ 'https://generativelanguage.googleapis.com/v1beta/models/' + $('Config').first().json.geminiModel + ':generateContent?key=' + $('Config').first().json.geminiApiKey }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.geminiBody) }}",
+        "options": {
+          "timeout": 60000,
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "B2013",
+      "name": "Gemini Coin Research",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        2780,
+        -800
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 3000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const resp = $input.first().json;\nconst tech = $('Coin Technical').first().json;\nconst newsCtx = $('Parse News').first().json;\nconst prevCtx = $('Parse Previous Analysis').first().json;\nconst ctx = $('Prepare Gemini Coin Prompt').first().json;\nconst cfg = $('Config').first().json;\nconst btcGate = tech.btcGate || { btcGate: 'neutral', btcRsi: 50, btcVsSma: 0 };\n\nlet aiAnalysis = '';\nif (resp.error) {\n  const m = resp.error.message || '';\n  aiAnalysis = m.includes('quota') ? '⏳ Gemini rate-limited. Coba lagi dalam 1 menit.' : '⚠️ Gemini error: ' + m.slice(0, 100);\n} else {\n  const parts = resp.candidates?.[0]?.content?.parts || [];\n  aiAnalysis = parts.map(p => p.text || '').join('').trim();\n  if (!aiAnalysis) aiAnalysis = '⚠️ Tidak ada respons dari Gemini.';\n  // Hilangkan tanda bintang markdown\n  aiAnalysis = aiAnalysis\n    .replace(/\\*\\*([^*]+)\\*\\*/g, '<b>$1</b>')\n    .replace(/\\*([^*]+)\\*/g, '$1')\n    .replace(/\\*/g, '');\n}\n\nconst ts = tech.technicalScore;\nlet decisionText = ts > cfg.thresholds.buy ? 'BUY' : ts < cfg.thresholds.sell ? 'SELL' : 'HOLD';\nlet decisionIcon = ts > cfg.thresholds.buy ? '🟢' : ts < cfg.thresholds.sell ? '🔴' : '🟡';\n\nlet btcWarning = '';\nif (decisionText === 'BUY' && btcGate.btcGate === 'bearish') {\n  decisionText = 'HOLD (BTC BEARISH)';\n  decisionIcon = '⚠️';\n  btcWarning = '\\n⚠️ <i>Signal BUY diturunkan ke HOLD karena makro BTC sedang bearish (harga di bawah SMA-20 & MACD negatif). Tunggu BTC stabil sebelum entry altcoin!</i>';\n}\n\nconst conf = Math.round(Math.abs(ts) * 100);\nconst price = new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(tech.currentPrice);\n\nlet prevLine = '';\nif ((prevCtx.previousSessions || []).length > 0) {\n  const last = prevCtx.previousSessions[0];\n  const lastPriceFmt = new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(last.harga);\n  const diffPct = last.harga > 0 ? ((tech.currentPrice - last.harga) / last.harga * 100).toFixed(1) : '0';\n  prevLine = '\\n📋 Analisis lalu (' + last.tanggal + '): ' + (last.keputusan || '-') + ' di ' + lastPriceFmt + ' (' + (diffPct >= 0 ? '+' : '') + diffPct + '%)';\n}\n\nconst newsLine = (newsCtx.newsCount || 0) > 0\n  ? '📰 Berita Live: ' + newsCtx.newsCount + ' artikel dianalisis'\n  : '📰 Berita: tidak ada berita baru';\n\nconst trendIcon = tech.trendDir > 0 ? '📈' : tech.trendDir < 0 ? '📉' : '↔️';\nconst adxTag = (tech.adxVal || 0) > 25 ? 'ADX ' + tech.adxVal + ' (Kuat)' : 'ADX ' + (tech.adxVal || 0) + ' (Moderat)';\nconst btcIcon = btcGate.btcGate === 'bullish' ? '🟢' : btcGate.btcGate === 'bearish' ? '🔴' : '⚪';\n\nconst tpTarget = tech.currentPrice ? new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(tech.currentPrice * 1.12) : '-';\nconst slTarget = tech.swingLow14 ? new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(tech.swingLow14) : '-';\nconst exitGuide = '\\n🎯 <b>Panduan Exit:</b> Target TP (+12%): ~' + tpTarget + ' | Level Invalidasi/SL: ' + slTarget;\n\nconst msg = [\n  decisionIcon + ' <b>' + tech.coinName + ' (' + tech.coinSymbol + ') — ' + decisionText + '</b>',\n  'Teknikal: ' + conf + '% | Data: ' + tech.dataPoints + ' hari' + prevLine,\n  '',\n  '💰 Harga: ' + price,\n  '📈 RSI: ' + tech.indicators.rsi14 + (tech.indicators.rsi14 < 30 ? ' ⬇️' : tech.indicators.rsi14 > 70 ? ' ⬆️' : ' →'),\n  '📊 MACD: ' + (tech.indicators.macdHistogram > 0 ? '▲ bullish' : '▼ bearish') +\n    ' | %B: ' + tech.indicators.bollingerPercentB.toFixed(2) +\n    ' | Vol: ' + (tech.indicators.historicalVolatilityAnnualized * 100).toFixed(1) + '%',\n  trendIcon + ' Tren: ' + (tech.trendDir > 0 ? 'Uptrend' : tech.trendDir < 0 ? 'Downtrend' : 'Sideways') +\n    ' (' + adxTag + ') | ' + btcIcon + ' BTC: ' + btcGate.btcGate,\n  btcWarning,\n  newsLine,\n  '',\n  '🤖 <b>Analisis AI (Berdasarkan Berita Live):</b>',\n  aiAnalysis,\n  exitGuide,\n  '',\n  '💡 <i>Ketik <code>/buy ' + tech.coinSymbol.toLowerCase() + ' 150k</code> untuk mencatat beli & memantau koin ini.</i>\\n' +\n  '⚠️ <i>Decision support only.</i>',\n].join('\\n');\n\nconst shortSummary = (aiAnalysis.slice(0, 150)).replace(/'/g, \"''\");\nconst safeMsg = msg.slice(0, 400).replace(/'/g, \"''\");\n\nreturn [{ json: {\n  telegramMessage: msg, chatId: ctx.chatId, botToken: ctx.botToken,\n  sqlSymbol: tech.coinSymbol, sqlName: tech.coinName, sqlHarga: tech.currentPrice,\n  sqlKeputusan: decisionText, sqlSkor: tech.technicalScore,\n  sqlRingkasan: shortSummary, sqlKonten: safeMsg,\n} }];"
+      },
+      "id": "B2014",
+      "name": "Build Coin Report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3020,
+        -800
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $json.botToken || $('Config').first().json.botToken }}/sendMessage",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ chat_id: $json.chatId || $('Config').first().json.telegramChatId, text: $json.telegramMessage, parse_mode: \"HTML\", disable_web_page_preview: true }) }}",
+        "options": {
+          "timeout": 15000,
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "B2017",
+      "name": "Send Coin Report",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        3260,
+        -880
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const d = $('Build Coin Report').first().json;\nconst p = $('Config').first().json.sqlitePath;\nconst now = new Date();\nconst tanggal = now.toISOString().slice(0, 10);\nconst waktu = now.toLocaleTimeString('id-ID', { timeZone: 'Asia/Jakarta', hour: '2-digit', minute: '2-digit' });\nconst sql = \"INSERT INTO coin_sessions (tanggal, waktu, simbol, tipe, harga, keputusan, skor_teknikal, ringkasan, konten) \" +\n  \"VALUES ('\" + tanggal + \"','\" + waktu + \"','\" + (d.sqlSymbol || '').replace(/'/g, \"''\") + \"','coin',\" +\n  (d.sqlHarga || 0) + \",'\" + (d.sqlKeputusan || '') + \"',\" + (d.sqlSkor || 0) + \",'\" + (d.sqlRingkasan || '') + \"','\" + (d.sqlKonten || '') + \"');\";\nconst dbCmd = \"sqlite3 '\" + p.replace(/'/g, \"'\\\"'\\\"'\") + \"' \\\"\" + sql + \"\\\"\";\nreturn [{ json: { ...d, dbCmd } }];"
+      },
+      "id": "B2015",
+      "name": "Prepare Save Coin",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3260,
+        -720
+      ]
+    },
+    {
+      "parameters": {
+        "executeOnce": false,
+        "command": "={{ $json.dbCmd }}"
+      },
+      "id": "B2016",
+      "name": "Save Coin Analysis",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        3500,
+        -720
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "url": "={{ 'https://news.google.com/rss/search?q=' + encodeURIComponent($json.args + ' crypto') + '&hl=en&gl=US&ceid=US:en' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 20000,
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          }
+        }
+      },
+      "id": "B3000",
+      "name": "Fetch Ask News",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        380,
+        -400
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const xml = ($input.first().json.data || '').toString();\nconst itemBlocks = [...xml.matchAll(/<item>([\\s\\S]*?)<\\/item>/g)];\nconst articles = itemBlocks.slice(0, 6).map(m => {\n  const c = m[1];\n  const title = (c.match(/<title><!\\[CDATA\\[([\\s\\S]*?)\\]\\]>/) || c.match(/<title>([\\s\\S]*?)<\\/title>/))?.[1] || '';\n  const pubDate = c.match(/<pubDate>([\\s\\S]*?)<\\/pubDate>/)?.[1] || '';\n  return {\n    title: title.replace(/&amp;/g,'&').replace(/&#39;/g,\"'\").replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'\"').trim(),\n    pubDate: pubDate.slice(0, 16),\n  };\n}).filter(a => a.title.length > 5);\n\nconst update = $('Parse Incoming Message').first().json;\nreturn [{ json: { ...update, askNews: articles } }];"
+      },
+      "id": "B3001",
+      "name": "Parse Ask News",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        620,
+        -400
+      ],
+      "notesInFlow": true,
+      "notes": "Browsing Google News live untuk topik /ask."
+    },
+    {
+      "parameters": {
+        "jsCode": "const p = $('Config').first().json.sqlitePath;\nconst sql = \"SELECT tanggal, waktu, simbol, tipe, keputusan, skor_teknikal, ringkasan FROM coin_sessions ORDER BY tanggal DESC, id DESC LIMIT 15;\";\nconst dbCmd = \"sqlite3 -separator '|' '\" + p.replace(/'/g, \"'\\\"'\\\"'\") + \"' \\\"\" + sql + \"\\\"\";\nreturn [{ json: { dbCmd } }];"
+      },
+      "id": "B3002",
+      "name": "Prepare Read Sessions",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        860,
+        -400
+      ]
+    },
+    {
+      "parameters": {
+        "executeOnce": false,
+        "command": "={{ $json.dbCmd }}"
+      },
+      "id": "B3003",
+      "name": "Read Recent Sessions",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        1100,
+        -400
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = ($input.first().json.stdout || '').trim();\nconst lines = raw.split('\\n').filter(Boolean);\nconst sessions = lines.map(line => {\n  const [tanggal, waktu, simbol, tipe, keputusan, skor, ringkasan] = line.split('|');\n  return { tanggal, waktu, simbol, tipe, keputusan, skor: parseFloat(skor) || 0, ringkasan: ringkasan || '' };\n}).filter(s => s.tanggal);\n\nconst askCtx = $('Parse Ask News').first().json;\nconst cfg = $('Config').first().json;\nconst question = askCtx.args || 'Bagaimana kondisi pasar crypto hari ini?';\n\nconst newsText = (askCtx.askNews || []).length > 0\n  ? askCtx.askNews.map((a, i) => (i + 1) + '. ' + a.title + (a.pubDate ? ' (' + a.pubDate + ')' : '')).join('\\n')\n  : 'Tidak ada berita live spesifik yang ditemukan.';\n\nconst historyText = sessions.length > 0\n  ? sessions.slice(0, 8).map(s =>\n      '- ' + s.tanggal + (s.waktu ? ' ' + s.waktu : '') + ' [' + (s.simbol || '?') + '/' + (s.tipe || '?') + ']: ' +\n      (s.keputusan ? s.keputusan + ' skor=' + s.skor.toFixed(2) : '') +\n      (s.ringkasan ? ' — ' + s.ringkasan.slice(0, 100) : '')\n    ).join('\\n')\n  : 'Belum ada riwayat analisis.';\n\nconst prompt = [\n  'Kamu adalah asisten riset crypto personal untuk trader Indonesia.',\n  'Kamu dibekali hasil pencarian Google News LIVE hari ini dan riwayat analisis percakapan sebelumnya.',\n  '',\n  '═══ HASIL BROWSING GOOGLE NEWS LIVE HARI INI ═══',\n  newsText,\n  '',\n  '═══ RIWAYAT ANALISIS DI DATABASE SQLITE ═══',\n  historyText,\n  '',\n  '═══ PERTANYAAN USER ═══',\n  question,\n  '',\n  '═══ INSTRUKSI ═══',\n  '1. Jawab dalam Bahasa Indonesia, maksimal 650 karakter, fokus actionable.',\n  '2. Utamakan fakta dari BERITA LIVE hari ini untuk menjawab pertanyaan user.',\n  '3. Jika pertanyaan berkaitan dengan koin di riwayat, sambungkan dengan konteks sebelumnya.',\n  '4. Akhiri dengan kesimpulan / sentiment.',\n].join('\\n');\n\nconst geminiBody = {\n  contents: [{ parts: [{ text: prompt }] }],\n  generationConfig: { maxOutputTokens: 2000, temperature: 0.2, thinkingConfig: { thinkingBudget: 512 } },\n};\n\nreturn [{ json: {\n  geminiBody, question, askNews: askCtx.askNews || [], sessions,\n  chatId: cfg.telegramChatId, botToken: cfg.botToken\n} }];"
+      },
+      "id": "B3004",
+      "name": "Build Ask With Context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1340,
+        -400
+      ],
+      "notesInFlow": true,
+      "notes": "Kombinasi Berita Live + Riwayat SQLite -> Gemini."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ 'https://generativelanguage.googleapis.com/v1beta/models/' + $('Config').first().json.geminiModel + ':generateContent?key=' + $('Config').first().json.geminiApiKey }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.geminiBody) }}",
+        "options": {
+          "timeout": 60000,
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "B3005",
+      "name": "Gemini Ask",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1580,
+        -400
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 3000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const resp = $input.first().json;\nconst ctx = $('Build Ask With Context').first().json;\n\nlet answer = '';\nif (resp.error) {\n  const m = resp.error.message || '';\n  answer = m.includes('quota') ? '⏳ AI rate-limited. Coba lagi dalam 1 menit.' : '❌ Error: ' + m.slice(0, 120);\n} else {\n  const parts = resp.candidates?.[0]?.content?.parts || [];\n  answer = parts.map(p => p.text || '').join('').trim().slice(0, 3000);\n  if (!answer) answer = '⚠️ Tidak ada respons dari AI.';\n  // Hilangkan tanda bintang markdown\n  answer = answer\n    .replace(/\\*\\*([^*]+)\\*\\*/g, '<b>$1</b>')\n    .replace(/\\*([^*]+)\\*/g, '$1')\n    .replace(/\\*/g, '');\n}\n\nconst newsNote = (ctx.askNews || []).length > 0\n  ? '\\n\\n📰 <i>Disintesis dari ' + ctx.askNews.length + ' berita Google News live terbaru.</i>'\n  : '';\n\nconst msg = [\n  '🤖 <b>Luna Hernandez AI Research</b>',\n  '<i>❓ ' + ctx.question.slice(0, 400) + '</i>',\n  '',\n  answer,\n  newsNote,\n].join('\\n');\n\nreturn [{ json: {\n  telegramMessage: msg, chatId: ctx.chatId, botToken: ctx.botToken,\n  sqlQuestion: (ctx.question || '').slice(0, 200).replace(/'/g, \"''\"),\n  sqlAnswer: answer.slice(0, 300).replace(/'/g, \"''\"),\n} }];"
+      },
+      "id": "B3006",
+      "name": "Format Ask Answer",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1820,
+        -400
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $json.botToken || $('Config').first().json.botToken }}/sendMessage",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ chat_id: $json.chatId || $('Config').first().json.telegramChatId, text: $json.telegramMessage, parse_mode: \"HTML\", disable_web_page_preview: true }) }}",
+        "options": {
+          "timeout": 15000,
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "B3007",
+      "name": "Send Ask",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        2060,
+        -480
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const d = $('Format Ask Answer').first().json;\nconst p = $('Config').first().json.sqlitePath;\nconst now = new Date();\nconst tanggal = now.toISOString().slice(0, 10);\nconst waktu = now.toLocaleTimeString('id-ID', { timeZone: 'Asia/Jakarta', hour: '2-digit', minute: '2-digit' });\nconst sql = \"INSERT INTO coin_sessions (tanggal, waktu, simbol, tipe, ringkasan, konten) VALUES ('\" +\n  tanggal + \"','\" + waktu + \"','ASK','ask','\" + (d.sqlQuestion || '') + \"','\" + (d.sqlAnswer || '') + \"');\";\nconst dbCmd = \"sqlite3 '\" + p.replace(/'/g, \"'\\\"'\\\"'\") + \"' \\\"\" + sql + \"\\\"\";\nreturn [{ json: { ...d, dbCmd } }];"
+      },
+      "id": "B3008",
+      "name": "Prepare Save Ask",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2060,
+        -320
+      ]
+    },
+    {
+      "parameters": {
+        "executeOnce": false,
+        "command": "={{ $json.dbCmd }}"
+      },
+      "id": "B3009",
+      "name": "Save Ask Session",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        2300,
+        -320
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const cfg = $('Config').first().json;\nconst dbCmd = \"node /home/node/.n8n/manage_positions.mjs list-active\";\nreturn [{ json: { dbCmd, chatId: cfg.telegramChatId, botToken: cfg.botToken } }];"
+      },
+      "id": "B4001",
+      "name": "Prepare List Positions",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        380,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "executeOnce": false,
+        "command": "={{ $json.dbCmd }}"
+      },
+      "id": "B4002",
+      "name": "Query List Positions",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        620,
+        200
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = ($input.first().json.stdout || '').trim();\nconst cfg = $('Config').first().json;\n\nlet res = null;\ntry {\n  res = JSON.parse(raw);\n} catch (e) {}\n\nconst positions = res?.positions || [];\n\nif (!positions.length) {\n  const msg = [\n    '💼 <b>Portofolio Swing Luna Hernandez</b>',\n    '',\n    '<i>Belum ada posisi koin yang sedang dipantau aktif.</i>',\n    '',\n    '👉 <b>Cara mulai memantau koin:</b>',\n    '• Ketik <code>/buy &lt;simbol&gt; [modal]</code>',\n    '  <i>Contoh:</i> <code>/buy sol 150k</code> atau <code>/buy btc 200000</code>',\n    '• Ketik <code>/rec</code> untuk melihat radar koin siap entry',\n  ].join('\\n');\n  return [{ json: { hasPositions: false, telegramMessage: msg, chatId: cfg.telegramChatId, botToken: cfg.botToken } }];\n}\n\nconst coinIds = [...new Set(positions.map(p => p.coin_id))].join(',');\n\nreturn [{ json: {\n  hasPositions: true,\n  positions,\n  coinIds,\n  chatId: cfg.telegramChatId,\n  botToken: cfg.botToken,\n}}];"
+      },
+      "id": "B4003",
+      "name": "Process Portfolio Check",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        860,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.hasPositions }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "B4004",
+      "name": "Has Active Positions?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1100,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $json.botToken || $('Config').first().json.botToken }}/sendMessage",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ chat_id: $json.chatId || $('Config').first().json.telegramChatId, text: $json.telegramMessage, parse_mode: \"HTML\", disable_web_page_preview: true }) }}",
+        "options": {
+          "timeout": 15000,
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "B4005",
+      "name": "Send Empty Portfolio",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1340,
+        280
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "url": "=https://api.coingecko.com/api/v3/simple/price?ids={{ $json.coinIds }},bitcoin&vs_currencies=idr&include_24hr_change=true",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "B4006",
+      "name": "Fetch Portfolio Prices",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1340,
+        120
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 3000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const priceData = $input.first().json;\nconst posCtx = $('Process Portfolio Check').first().json;\nconst cfg = $('Config').first().json;\nconst positions = posCtx.positions || [];\n\nconst fmt = v => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(v);\n\nlet totalModal = 0, totalNilai = 0;\nconst positionRows = [];\n\npositions.forEach((pos, idx) => {\n  const buyPrice = Number(pos.harga_beli);\n  const modal = Number(pos.modal_idr);\n  const currPrice = priceData[pos.coin_id]?.idr || buyPrice;\n  const pnlPct = Number(((currPrice - buyPrice) / buyPrice * 100).toFixed(2));\n  const pnlIdr = Math.round(modal * (pnlPct / 100));\n  const currVal = modal + pnlIdr;\n\n  totalModal += modal;\n  totalNilai += currVal;\n\n  const isProfit = pnlPct >= 0;\n  const icon = isProfit ? '🟢' : '🔴';\n\n  positionRows.push([\n    (idx + 1) + '️⃣ <b>' + pos.simbol + ' (' + pos.nama + ')</b>',\n    '• Beli: ' + fmt(buyPrice) + ' | Sekarang: ' + fmt(currPrice),\n    '• Modal: ' + fmt(modal) + ' (Nilai: ' + fmt(currVal) + ')',\n    '• PnL: ' + icon + ' ' + (isProfit ? '+' : '') + pnlPct + '% (' + (isProfit ? '+' : '') + fmt(pnlIdr) + ')',\n    '• TP: ' + fmt(pos.target_profit) + ' | SL: ' + fmt(pos.stop_loss),\n  ].join('\\n'));\n});\n\nconst totalPnlPct = totalModal > 0 ? Number(((totalNilai - totalModal) / totalModal * 100).toFixed(2)) : 0;\nconst totalPnlIdr = totalNilai - totalModal;\nconst isTotProfit = totalPnlIdr >= 0;\nconst totIcon = isTotProfit ? '🟢' : '🔴';\n\n// BTC Macro info\nconst btcPrice = priceData.bitcoin?.idr;\nconst btcChg = priceData.bitcoin?.idr_24h_change;\nconst btcText = btcPrice\n  ? '🌐 <b>BTC Makro:</b> ' + fmt(btcPrice) + ' (' + (btcChg >= 0 ? '▲ +' : '▼ ') + (btcChg ? btcChg.toFixed(2) : 0) + '% 24h)'\n  : '';\n\nconst now = new Intl.DateTimeFormat('id-ID', { timeZone: cfg.timezone, dateStyle: 'medium', timeStyle: 'short' }).format(new Date());\n\nconst msg = [\n  '💼 <b>Portofolio Swing Luna Hernandez</b>',\n  '<i>' + now + ' WIB</i>',\n  '',\n  '🪙 <b>Posisi Aktif (' + positions.length + ' Koin):</b>',\n  '',\n  positionRows.join('\\n\\n'),\n  '',\n  '────────────────────',\n  '💵 <b>Total Modal:</b> ' + fmt(totalModal),\n  '📊 <b>Estimasi Nilai:</b> ' + fmt(totalNilai),\n  '📈 <b>Total Floating PnL:</b> ' + totIcon + ' ' + (isTotProfit ? '+' : '') + totalPnlPct + '% (' + (isTotProfit ? '+' : '') + fmt(totalPnlIdr) + ')',\n  '',\n  btcText,\n  '',\n  '💡 <i>Ketik <code>/stat [SIMBOL]</code> untuk evaluasi mendalam.</i>\\n' +\n  '<i>Ketik <code>/sell [SIMBOL]</code> untuk menutup posisi.</i>',\n].filter(Boolean).join('\\n');\n\nreturn [{ json: { telegramMessage: msg, chatId: cfg.telegramChatId, botToken: cfg.botToken } }];"
+      },
+      "id": "B4007",
+      "name": "Format Dynamic Portfolio",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1580,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $json.botToken || $('Config').first().json.botToken }}/sendMessage",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ chat_id: $json.chatId || $('Config').first().json.telegramChatId, text: $json.telegramMessage, parse_mode: \"HTML\", disable_web_page_preview: true }) }}",
+        "options": {
+          "timeout": 15000,
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "B4008",
+      "name": "Send Dynamic Portfolio",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1820,
+        120
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "url": "=https://api.coingecko.com/api/v3/coins/markets?vs_currency={{ $('Config').first().json.quoteCurrency }}&order=market_cap_desc&per_page=100&page=1&price_change_percentage=24h",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "B5001",
+      "name": "CoinGecko Markets",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        380,
+        400
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 3000
+    },
+    {
+      "parameters": {
+        "jsCode": "const cfg = $('Config').first().json;\nconst coins = $input.all().map(i => i.json);\n\nif (!coins.length) return [{ json: { telegramMessage: '❌ Gagal ambil data market.', chatId: cfg.telegramChatId, botToken: cfg.botToken } }];\nconst sorted = [...coins].sort((a, b) => (b.price_change_percentage_24h || 0) - (a.price_change_percentage_24h || 0));\nconst gainers = sorted.slice(0, 5), losers = sorted.slice(-5).reverse();\nfunction fmt(c) {\n  const pct = ((c.price_change_percentage_24h || 0)).toFixed(2);\n  const price = new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(c.current_price || 0);\n  return (pct >= 0 ? '▲' : '▼') + ' <b>' + c.symbol.toUpperCase() + '</b> ' + price + ' (' + (pct >= 0 ? '+' : '') + pct + '%)';\n}\nconst now = new Intl.DateTimeFormat('id-ID', { timeZone: cfg.timezone, timeStyle: 'short' }).format(new Date());\nconst msg = ['📈 <b>Market IDR — Top Gainers & Losers 24h</b>', '<i>' + now + ' WIB</i>', '', '🟢 <b>Gainers:</b>', ...gainers.map(fmt), '', '🔴 <b>Losers:</b>', ...losers.map(fmt), '', '<i>Dari 100 koin terbesar</i>'].join('\\n');\nreturn [{ json: { telegramMessage: msg, chatId: cfg.telegramChatId, botToken: cfg.botToken } }];"
+      },
+      "id": "B5002",
+      "name": "Format Market",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        620,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $json.botToken || $('Config').first().json.botToken }}/sendMessage",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ chat_id: $json.chatId || $('Config').first().json.telegramChatId, text: $json.telegramMessage, parse_mode: \"HTML\", disable_web_page_preview: true }) }}",
+        "options": {
+          "timeout": 15000,
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "B5003",
+      "name": "Send Market",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        860,
+        400
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "executeOnce": false,
+        "command": "={{ (() => { const p=$('Config').first().json.sqlitePath; const sym=($('Parse Incoming Message').first().json.args||'').toUpperCase().replace(/'/g,\"''\"); const where=sym?\"WHERE simbol='\"+sym+\"' AND tipe='coin'\":'WHERE tipe=\\'coin\\''; return \"sqlite3 -separator '|' '\" + p.replace(/'/g,\"'\\\\\"'\\\\\"'\") + \"' \\\\\"SELECT tanggal, waktu, simbol, tipe, keputusan, skor_teknikal, ringkasan FROM coin_sessions \"+where+\" ORDER BY tanggal DESC, id DESC LIMIT 10;\\\\\"\"; })() }}"
+      },
+      "id": "B6001",
+      "name": "Read History",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        380,
+        850
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const update = $('Parse Incoming Message').first().json;\nconst cfg = $('Config').first().json;\nconst raw = ($input.first().json.stdout || '').trim();\nconst sym = update.args.toUpperCase().trim() || 'semua';\nconst lines = raw.split('\\n').filter(Boolean);\nif (!lines.length) {\n  const msg = '📋 Belum ada riwayat analisis' + (update.args ? ' untuk ' + sym : '') + '.\\n\\nGunakan /coin [simbol] untuk memulai analisis.';\n  return [{ json: { telegramMessage: msg, chatId: cfg.telegramChatId, botToken: cfg.botToken } }];\n}\nconst sessions = lines.map(line => {\n  const [tanggal, waktu, simbol, tipe, keputusan, skor, ringkasan] = line.split('|');\n  return { tanggal, waktu, simbol, tipe, keputusan, skor: parseFloat(skor) || 0, ringkasan: ringkasan || '' };\n});\nconst header = '📋 <b>Riwayat Analisis' + (update.args ? ' ' + sym : '') + '</b>\\n\\n';\nconst rows = sessions.slice(0, 10).map(s =>\n  s.tanggal + (s.waktu ? ' ' + s.waktu : '') + ' <b>' + s.simbol + '</b> [' + s.tipe + '] ' +\n  (s.keputusan ? '→ ' + (s.keputusan === 'BUY' ? '🟢 ' : s.keputusan === 'SELL' ? '🔴 ' : '🟡 ') + s.keputusan : '') +\n  (s.ringkasan ? '\\n  <i>' + s.ringkasan.slice(0, 80) + '</i>' : '')\n).join('\\n\\n');\nreturn [{ json: { telegramMessage: header + rows, chatId: cfg.telegramChatId, botToken: cfg.botToken } }];"
+      },
+      "id": "B6002",
+      "name": "Build History",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        620,
+        850
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $json.botToken || $('Config').first().json.botToken }}/sendMessage",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ chat_id: $json.chatId || $('Config').first().json.telegramChatId, text: $json.telegramMessage, parse_mode: \"HTML\", disable_web_page_preview: true }) }}",
+        "options": {
+          "timeout": 15000,
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "B6003",
+      "name": "Send History",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        860,
+        850
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const update = $('Parse Incoming Message').first().json;\nconst cfg = $('Config').first().json;\nconst msg = '❓ Perintah <b>/' + update.command + '</b> tidak dikenal.\\n\\nKetik <code>/start</code> untuk panduan lengkap atau <code>/help</code> untuk daftar perintah.';\nreturn [{ json: { telegramMessage: msg, chatId: cfg.telegramChatId, botToken: cfg.botToken } }];"
+      },
+      "id": "B7001",
+      "name": "Unknown Command",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        380,
+        1000
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $json.botToken || $('Config').first().json.botToken }}/sendMessage",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ chat_id: $json.chatId || $('Config').first().json.telegramChatId, text: $json.telegramMessage, parse_mode: \"HTML\", disable_web_page_preview: true }) }}",
+        "options": {
+          "timeout": 15000,
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "B7002",
+      "name": "Send Unknown",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        620,
+        1000
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "url": "=https://api.coingecko.com/api/v3/search?query={{ encodeURIComponent($('Parse Incoming Message').first().json.coinArg) }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "B8001",
+      "name": "CoinGecko Search Buy",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        380,
+        1200
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 3000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\nconst update = $('Parse Incoming Message').first().json;\nconst cfg = $('Config').first().json;\nconst query = (update.coinArg || '').toLowerCase().trim();\n\nif (!query) {\n  return [{ json: {\n    found: false,\n    telegramMessage: '❌ Masukkan simbol koin yang ingin dibeli.\\nContoh: <code>/buy SOL 150k</code> atau <code>/buy BTC</code>',\n    chatId: cfg.telegramChatId, botToken: cfg.botToken,\n  }}];\n}\n\nconst coins = data.coins || [];\nlet coin = coins.find(c => c.symbol?.toLowerCase() === query);\nif (!coin) coin = coins.find(c => c.name?.toLowerCase() === query);\nif (!coin && coins.length > 0) coin = coins[0];\n\nif (!coin) {\n  return [{ json: {\n    found: false,\n    telegramMessage: '❌ Koin <b>' + query.toUpperCase() + '</b> tidak ditemukan di pasar.\\nCoba periksa kembali simbol koinnya (contoh: SOL, SUI, AERO, BTC).',\n    chatId: cfg.telegramChatId, botToken: cfg.botToken,\n  }}];\n}\n\nreturn [{ json: {\n  found: true,\n  coinId: coin.id,\n  coinSymbol: coin.symbol.toUpperCase(),\n  coinName: coin.name,\n  modalArg: update.modalArg || 100000,\n  chatId: cfg.telegramChatId,\n  botToken: cfg.botToken,\n}}];"
+      },
+      "id": "B8002",
+      "name": "Extract Buy Coin",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        620,
+        1200
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.found }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "B8003",
+      "name": "Is Buy Found?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        860,
+        1200
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $json.botToken || $('Config').first().json.botToken }}/sendMessage",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ chat_id: $json.chatId || $('Config').first().json.telegramChatId, text: $json.telegramMessage, parse_mode: \"HTML\", disable_web_page_preview: true }) }}",
+        "options": {
+          "timeout": 15000,
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "B8004",
+      "name": "Send Buy Error",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1100,
+        1280
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "url": "=https://api.coingecko.com/api/v3/coins/{{ $json.coinId }}/market_chart?vs_currency={{ $('Config').first().json.quoteCurrency }}&days=60",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "B8005",
+      "name": "Fetch Buy Chart",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1100,
+        1120
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 3000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const chartData = $input.first().json;\nconst prices = chartData.prices || [];\nconst buyCtx = $('Extract Buy Coin').first().json;\nconst cfg = $('Config').first().json;\n\nif (!prices.length) {\n  return [{ json: {\n    hasPrice: false,\n    telegramMessage: '❌ Gagal mengambil data harga pasar untuk <b>' + buyCtx.coinSymbol + '</b>. Silakan coba sesaat lagi.',\n    chatId: buyCtx.chatId, botToken: buyCtx.botToken,\n  }}];\n}\n\nconst lastPrice = Math.round(prices.at(-1)[1]);\nconst tpPrice = Math.round(lastPrice * 1.12);\nconst slPrice = Math.round(lastPrice * 0.94);\nconst sym = buyCtx.coinSymbol;\nconst coinId = buyCtx.coinId;\nconst name = (buyCtx.coinName || sym).replace(/'/g, \"\");\nconst modal = buyCtx.modalArg || 100000;\n\nconst dbCmd = \"node /home/node/.n8n/manage_positions.mjs buy \" + sym + \" \" + coinId + \" '\" + name + \"' \" + lastPrice + \" \" + modal + \" \" + tpPrice + \" \" + slPrice;\n\nreturn [{ json: {\n  dbCmd,\n  coinSymbol: sym,\n  coinName: buyCtx.coinName,\n  modal,\n  chatId: buyCtx.chatId,\n  botToken: buyCtx.botToken,\n}}];"
+      },
+      "id": "B8006",
+      "name": "Prepare Buy Exec",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1340,
+        1120
+      ]
+    },
+    {
+      "parameters": {
+        "executeOnce": false,
+        "command": "={{ $json.dbCmd }}"
+      },
+      "id": "B8007",
+      "name": "Execute Buy DB",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        1580,
+        1120
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = ($input.first().json.stdout || '').trim();\nconst cfg = $('Config').first().json;\nlet res = null;\ntry {\n  res = JSON.parse(raw);\n} catch (e) {\n  return [{ json: {\n    telegramMessage: '❌ Terjadi kesalahan saat mencatat posisi: ' + raw.slice(0, 100),\n    chatId: cfg.telegramChatId, botToken: cfg.botToken,\n  }}];\n}\n\nif (!res || !res.success) {\n  return [{ json: {\n    telegramMessage: '❌ Gagal mencatat posisi: ' + (res?.error || 'Unknown error'),\n    chatId: cfg.telegramChatId, botToken: cfg.botToken,\n  }}];\n}\n\nconst fmt = v => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(v);\n\nlet msg = '';\nif (res.action === 'dca') {\n  msg = [\n    '🔵 <b>DCA Ditambahkan: ' + res.simbol + ' (' + res.nama + ')</b>',\n    '',\n    '💰 Entry Baru: ' + fmt(res.entryBaru),\n    '⚖️ <b>Harga Rata-Rata (Avg Down):</b> ' + fmt(res.avgPrice),\n    '💵 Modal Ditambahkan: ' + fmt(res.modalBaru),\n    '💼 <b>Total Modal Terakumulasi:</b> ' + fmt(res.totalModal),\n    '',\n    '🎯 Target Profit Baru (+12%): ' + fmt(res.tpPrice),\n    '🛑 Stop Loss Baru (-6%): ' + fmt(res.slPrice),\n    '',\n    '<i>Posisi diperbarui otomatis di /portfolio & dipantau cron alert!</i>',\n  ].join('\\n');\n} else {\n  msg = [\n    '🟢 <b>Posisi Baru Terbuka: ' + res.simbol + ' (' + res.nama + ')</b>',\n    '',\n    '💰 Harga Beli: ' + fmt(res.avgPrice),\n    '💵 Modal Alokasi: ' + fmt(res.totalModal),\n    '🎯 Target Profit (+12%): ' + fmt(res.tpPrice),\n    '🛑 Stop Loss (-6%): ' + fmt(res.slPrice),\n    '',\n    '<i>Koin kini aktif dipantau di /portfolio dan cron alert berkala.</i>\\n' +\n    '<i>Ketik <code>/stat ' + res.simbol + '</code> kapan saja untuk evaluasi posisi.</i>',\n  ].join('\\n');\n}\n\nreturn [{ json: { telegramMessage: msg, chatId: cfg.telegramChatId, botToken: cfg.botToken } }];"
+      },
+      "id": "B8008",
+      "name": "Format Buy Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1820,
+        1120
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $json.botToken || $('Config').first().json.botToken }}/sendMessage",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ chat_id: $json.chatId || $('Config').first().json.telegramChatId, text: $json.telegramMessage, parse_mode: \"HTML\", disable_web_page_preview: true }) }}",
+        "options": {
+          "timeout": 15000,
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "B8009",
+      "name": "Send Buy Confirm",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        2060,
+        1120
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const update = $('Parse Incoming Message').first().json;\nconst cfg = $('Config').first().json;\nconst sym = (update.coinArg || '').toUpperCase().trim();\n\nif (!sym) {\n  const dbCmd = \"node /home/node/.n8n/manage_positions.mjs get-active __NONE__\";\n  return [{ json: { sym: '', dbCmd, chatId: cfg.telegramChatId, botToken: cfg.botToken } }];\n}\n\nconst dbCmd = \"node /home/node/.n8n/manage_positions.mjs get-active \" + sym;\nreturn [{ json: { sym, dbCmd, chatId: cfg.telegramChatId, botToken: cfg.botToken } }];"
+      },
+      "id": "B8101",
+      "name": "Prepare Sell Query",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        380,
+        1450
+      ]
+    },
+    {
+      "parameters": {
+        "executeOnce": false,
+        "command": "={{ $json.dbCmd }}"
+      },
+      "id": "B8102",
+      "name": "Execute Sell Query",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        620,
+        1450
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = ($input.first().json.stdout || '').trim();\nconst sellInit = $('Prepare Sell Query').first().json;\nconst cfg = $('Config').first().json;\n\nif (!sellInit.sym) {\n  return [{ json: {\n    found: false,\n    telegramMessage: '❌ Masukkan simbol koin yang ingin ditutup.\\nContoh: <code>/sell SOL</code>',\n    chatId: cfg.telegramChatId, botToken: cfg.botToken,\n  }}];\n}\n\nlet res = null;\ntry {\n  res = JSON.parse(raw);\n} catch (e) {}\n\nif (!res || !res.found || !res.position) {\n  return [{ json: {\n    found: false,\n    telegramMessage: '❌ Kamu belum memiliki posisi aktif untuk <b>' + sellInit.sym + '</b>.\\nKetik <code>/portfolio</code> untuk melihat koin yang sedang dipantau.',\n    chatId: cfg.telegramChatId, botToken: cfg.botToken,\n  }}];\n}\n\nreturn [{ json: {\n  found: true,\n  sym: sellInit.sym,\n  coinId: res.position.coin_id,\n  position: res.position,\n  chatId: cfg.telegramChatId,\n  botToken: cfg.botToken,\n}}];"
+      },
+      "id": "B8103",
+      "name": "Process Sell Check",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        860,
+        1450
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.found }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "B8104",
+      "name": "Is Sell Found?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1100,
+        1450
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $json.botToken || $('Config').first().json.botToken }}/sendMessage",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ chat_id: $json.chatId || $('Config').first().json.telegramChatId, text: $json.telegramMessage, parse_mode: \"HTML\", disable_web_page_preview: true }) }}",
+        "options": {
+          "timeout": 15000,
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "B8105",
+      "name": "Send Sell Error",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1340,
+        1530
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "url": "=https://api.coingecko.com/api/v3/simple/price?ids={{ $json.coinId }}&vs_currencies=idr",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "B8106",
+      "name": "Fetch Sell Price",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1340,
+        1370
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 3000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const pData = $input.first().json;\nconst sellCtx = $('Process Sell Check').first().json;\nconst currPrice = pData[sellCtx.coinId]?.idr || sellCtx.position.harga_beli;\nconst dbCmd = \"node /home/node/.n8n/manage_positions.mjs sell \" + sellCtx.sym + \" \" + currPrice;\nreturn [{ json: { dbCmd, currPrice, sym: sellCtx.sym, chatId: sellCtx.chatId, botToken: sellCtx.botToken } }];"
+      },
+      "id": "B8107",
+      "name": "Prepare Close Position",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1580,
+        1370
+      ]
+    },
+    {
+      "parameters": {
+        "executeOnce": false,
+        "command": "={{ $json.dbCmd }}"
+      },
+      "id": "B8108",
+      "name": "Execute Close Command",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        1820,
+        1370
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = ($input.first().json.stdout || '').trim();\nconst cfg = $('Config').first().json;\nlet res = null;\ntry {\n  res = JSON.parse(raw);\n} catch (e) {}\n\nif (!res || !res.success) {\n  return [{ json: {\n    telegramMessage: '❌ Gagal menutup posisi: ' + (res?.error || raw.slice(0, 100)),\n    chatId: cfg.telegramChatId, botToken: cfg.botToken,\n  }}];\n}\n\nconst fmt = v => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(v);\nconst isProfit = res.pnlPct >= 0;\nconst pnlIcon = isProfit ? '🟢' : '🔴';\nconst pnlWord = isProfit ? 'Untung' : 'Rugi';\n\nconst msg = [\n  '🏁 <b>Posisi Ditutup: ' + res.simbol + ' (' + res.nama + ')</b>',\n  '',\n  '📅 Tanggal Masuk: ' + res.tanggalBeli,\n  '💰 Harga Beli: ' + fmt(res.hargaBeli),\n  '💵 Harga Jual: ' + fmt(res.hargaJual),\n  '',\n  '📊 <b>Hasil Realized PnL:</b>',\n  pnlIcon + ' ' + (isProfit ? '+' : '') + res.pnlPct + '% (' + pnlWord + ' ' + fmt(Math.abs(res.pnlIdr)) + ')',\n  '💵 <b>Total Dana Kembali:</b> ' + fmt(res.totalReturn) + ' (Modal ' + fmt(res.modalIdr) + ')',\n  '',\n  '<i>Koin telah dikeluarkan dari daftar pantauan aktif.</i>',\n].join('\\n');\n\nreturn [{ json: { telegramMessage: msg, chatId: cfg.telegramChatId, botToken: cfg.botToken } }];"
+      },
+      "id": "B8109",
+      "name": "Format Sell Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2060,
+        1370
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $json.botToken || $('Config').first().json.botToken }}/sendMessage",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ chat_id: $json.chatId || $('Config').first().json.telegramChatId, text: $json.telegramMessage, parse_mode: \"HTML\", disable_web_page_preview: true }) }}",
+        "options": {
+          "timeout": 15000,
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "B8110",
+      "name": "Send Sell Report",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        2300,
+        1370
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const update = $('Parse Incoming Message').first().json;\nconst cfg = $('Config').first().json;\nconst sym = (update.coinArg || '').toUpperCase().trim();\n\nif (!sym) {\n  const dbCmd = \"node /home/node/.n8n/manage_positions.mjs get-active __NONE__\";\n  return [{ json: { sym: '', dbCmd, chatId: cfg.telegramChatId, botToken: cfg.botToken } }];\n}\n\nconst dbCmd = \"node /home/node/.n8n/manage_positions.mjs get-active \" + sym;\nreturn [{ json: { sym, dbCmd, chatId: cfg.telegramChatId, botToken: cfg.botToken } }];"
+      },
+      "id": "B8201",
+      "name": "Prepare Stat Query",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        380,
+        1700
+      ]
+    },
+    {
+      "parameters": {
+        "executeOnce": false,
+        "command": "={{ $json.dbCmd }}"
+      },
+      "id": "B8202",
+      "name": "Execute Stat Query",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        620,
+        1700
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = ($input.first().json.stdout || '').trim();\nconst statInit = $('Prepare Stat Query').first().json;\nconst cfg = $('Config').first().json;\n\nif (!statInit.sym) {\n  return [{ json: {\n    found: false,\n    telegramMessage: '❌ Masukkan simbol koin yang ingin dicek.\\nContoh: <code>/stat SOL</code>',\n    chatId: cfg.telegramChatId, botToken: cfg.botToken,\n  }}];\n}\n\nlet res = null;\ntry {\n  res = JSON.parse(raw);\n} catch (e) {}\n\nif (!res || !res.found || !res.position) {\n  return [{ json: {\n    found: false,\n    telegramMessage: '❌ Kamu belum memiliki posisi aktif untuk <b>' + statInit.sym + '</b>.\\n\\nKetik <code>/buy ' + statInit.sym + ' [modal]</code> untuk mulai memantau koin ini.',\n    chatId: cfg.telegramChatId, botToken: cfg.botToken,\n  }}];\n}\n\nreturn [{ json: {\n  found: true,\n  sym: statInit.sym,\n  coinId: res.position.coin_id,\n  position: res.position,\n  chatId: cfg.telegramChatId,\n  botToken: cfg.botToken,\n}}];"
+      },
+      "id": "B8203",
+      "name": "Process Stat Position",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        860,
+        1700
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.found }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "B8204",
+      "name": "Is Stat Found?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1100,
+        1700
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $json.botToken || $('Config').first().json.botToken }}/sendMessage",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ chat_id: $json.chatId || $('Config').first().json.telegramChatId, text: $json.telegramMessage, parse_mode: \"HTML\", disable_web_page_preview: true }) }}",
+        "options": {
+          "timeout": 15000,
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "B8205",
+      "name": "Send Stat Error",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1340,
+        1780
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "url": "=https://api.coingecko.com/api/v3/coins/{{ $json.coinId }}/market_chart?vs_currency={{ $('Config').first().json.quoteCurrency }}&days=60",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "B8206",
+      "name": "Fetch Stat Chart",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1340,
+        1620
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 3000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst clamp = (x, lo = -1, hi = 1) => Math.max(lo, Math.min(hi, x));\nconst mean = v => v.reduce((s, x) => s + x, 0) / v.length;\nconst std = v => { const m = mean(v); return Math.sqrt(v.reduce((s, x) => s + (x - m) ** 2, 0) / v.length); };\nfunction ema(vals, period) {\n  const out = Array(vals.length).fill(null);\n  if (vals.length < period) return out;\n  let cur = mean(vals.slice(0, period)); out[period - 1] = cur;\n  const k = 2 / (period + 1);\n  for (let i = period; i < vals.length; i++) { cur = vals[i] * k + cur * (1 - k); out[i] = cur; }\n  return out;\n}\nfunction rsiWilder(vals, period = 14) {\n  if (vals.length <= period) return 50;\n  let g = 0, l = 0;\n  for (let i = 1; i <= period; i++) { const d = vals[i] - vals[i - 1]; g += Math.max(d, 0); l += Math.max(-d, 0); }\n  let ag = g / period, al = l / period;\n  for (let i = period + 1; i < vals.length; i++) {\n    const d = vals[i] - vals[i - 1];\n    ag = (ag * (period - 1) + Math.max(d, 0)) / period;\n    al = (al * (period - 1) + Math.max(-d, 0)) / period;\n  }\n  return al === 0 ? 100 : 100 - 100 / (1 + ag / al);\n}\nfunction macdCalc(vals) {\n  const n = vals.length;\n  const slow = Math.min(26, Math.floor(n * 0.4)), fast = Math.min(12, Math.floor(slow * 0.46)), sig = Math.min(9, Math.floor(fast * 0.75));\n  const fe = ema(vals, fast), se = ema(vals, slow);\n  const line = vals.map((_, i) => fe[i] != null && se[i] != null ? fe[i] - se[i] : null).filter(v => v != null);\n  if (line.length < sig) return { line: 0, signal: 0, histogram: 0 };\n  const sl = ema(line, sig);\n  return { line: line.at(-1), signal: sl.at(-1), histogram: line.at(-1) - sl.at(-1) };\n}\nfunction bollingerCalc(vals) {\n  const p = Math.min(20, vals.length);\n  const w = vals.slice(-p), mid = mean(w), dev = std(w);\n  return { middle: mid, upper: mid + 2 * dev, lower: mid - 2 * dev };\n}\nfunction annualVol(vals) {\n  const r = []; for (let i = 1; i < vals.length; i++) r.push(Math.log(vals[i] / vals[i - 1]));\n  return std(r) * Math.sqrt(365);\n}\nfunction sma(vals, period) {\n  if (!vals || vals.length < period) return null;\n  return vals.slice(-period).reduce((s, x) => s + x, 0) / period;\n}\nfunction atr(highs, lows, closes, period = 14) {\n  if (!highs || highs.length < 2) return (closes.at(-1) || 0) * 0.03;\n  const trs = [];\n  for (let i = 1; i < highs.length; i++) {\n    trs.push(Math.max(highs[i] - lows[i], Math.abs(highs[i] - closes[i-1]), Math.abs(lows[i] - closes[i-1])));\n  }\n  const p = Math.min(period, trs.length);\n  return trs.slice(-p).reduce((s, x) => s + x, 0) / p;\n}\nfunction adx(highs, lows, closes, period = 14) {\n  if (!highs || highs.length < period + 2) return 0;\n  const plusDM = [], minusDM = [], trs = [];\n  for (let i = 1; i < highs.length; i++) {\n    const up = highs[i] - highs[i-1], dn = lows[i-1] - lows[i];\n    plusDM.push(up > dn && up > 0 ? up : 0);\n    minusDM.push(dn > up && dn > 0 ? dn : 0);\n    trs.push(Math.max(highs[i]-lows[i], Math.abs(highs[i]-closes[i-1]), Math.abs(lows[i]-closes[i-1])));\n  }\n  let sTR = trs.slice(0, period).reduce((s,x)=>s+x,0);\n  let sPDM = plusDM.slice(0, period).reduce((s,x)=>s+x,0);\n  let sMDM = minusDM.slice(0, period).reduce((s,x)=>s+x,0);\n  const dx = [];\n  for (let i = period; i < trs.length; i++) {\n    sTR = sTR - sTR/period + trs[i];\n    sPDM = sPDM - sPDM/period + plusDM[i];\n    sMDM = sMDM - sMDM/period + minusDM[i];\n    const pDI = sTR > 0 ? 100*sPDM/sTR : 0, mDI = sTR > 0 ? 100*sMDM/sTR : 0;\n    const dSum = pDI + mDI;\n    dx.push(dSum > 0 ? 100*Math.abs(pDI-mDI)/dSum : 0);\n  }\n  if (!dx.length) return 0;\n  let adxV = dx.slice(0, Math.min(period, dx.length)).reduce((s,x)=>s+x,0) / Math.min(period, dx.length);\n  for (let i = period; i < dx.length; i++) adxV = (adxV*(period-1)+dx[i])/period;\n  return adxV;\n}\n\nconst rawPrices = $('Fetch Stat Chart').first().json.prices || [];\nconst statCtx = $('Process Stat Position').first().json;\nconst assetSymbol = statCtx.sym;\n\n// Parse daily OHLC\nconst daily = new Map();\nfor (const row of (rawPrices || [])) {\n  if (!Array.isArray(row) || row.length < 2) continue;\n  const ts = Number(row[0]), price = Number(row[1]);\n  if (!Number.isFinite(ts) || !Number.isFinite(price) || price <= 0) continue;\n  const d = new Date(ts).toISOString().slice(0, 10);\n  if (!daily.has(d)) {\n    daily.set(d, { ts, open: price, high: price, low: price, price });\n  } else {\n    const item = daily.get(d);\n    item.high = Math.max(item.high, price);\n    item.low = Math.min(item.low, price);\n    item.price = price;\n  }\n}\nconst series = [...daily.values()].sort((a, b) => a.ts - b.ts);\nconst prices = series.map(p => p.price);\nconst highs = series.map(p => p.high);\nconst lows = series.map(p => p.low);\nif (prices.length < 14) throw new Error(assetSymbol + ': data tidak cukup (min 14 titik harian)');\n\nconst rsiPeriod = Math.min(14, prices.length - 1);\nconst currentPrice = prices.at(-1);\nconst rsi = rsiWilder(prices, rsiPeriod);\nconst macdVal = macdCalc(prices);\nconst bands = bollingerCalc(prices);\nconst bw = Math.max(bands.upper - bands.lower, 1e-6);\nconst percentB = clamp((currentPrice - bands.lower) / bw, 0, 1);\nconst vol = annualVol(prices);\n\nconst sma20val = sma(prices, Math.min(20, prices.length));\nconst adxVal = adx(highs, lows, prices, Math.min(14, prices.length - 2));\nconst atrVal = atr(highs, lows, prices, Math.min(14, prices.length - 1));\n\nconst trendUp = sma20val !== null && currentPrice > sma20val && macdVal.histogram > 0;\nconst trendDown = sma20val !== null && currentPrice < sma20val && macdVal.histogram < 0;\nconst trendDir = trendUp ? 1 : trendDown ? -1 : 0;\n\nlet rsiScore = (50 - rsi) / 50;\nif (trendUp && rsi >= 40 && rsi <= 55) {\n  rsiScore = 0.50;\n} else if (trendDown && rsi >= 45 && rsi <= 60) {\n  rsiScore = -0.50;\n}\n\nconst macdNorm = (macdVal.histogram / currentPrice) * 100;\nconst macdScore = clamp(macdNorm / 2, -1, 1);\n\nlet bbScore = 1 - 2 * percentB;\nif (trendUp && percentB >= 0.15 && percentB <= 0.40) {\n  bbScore = 0.60;\n}\n\nconst volScore = -clamp((vol - 0.55) / 0.55, -1, 1);\n\nconst adxMult = adxVal > 25 ? 1.0 : adxVal > 15 ? 0.6 : 0.2;\nconst trendScore = trendDir * adxMult;\n\nconst weights = $('Config').first().json.technicalWeights;\nconst scores = { rsi: rsiScore, macd: macdScore, bollinger: bbScore, volatility: volScore, trend: trendScore };\nconst contribs = Object.fromEntries(Object.keys(weights).map(k => [k, weights[k] * scores[k]]));\nconst technicalScore = Object.values(contribs).reduce((s, x) => s + x, 0);\n\nconst topInd = Object.keys(contribs).reduce((a, b) => Math.abs(contribs[a]) > Math.abs(contribs[b]) ? a : b);\nconst reasons = {\n  rsi: rsi < 30 ? 'RSI oversold (' + rsi.toFixed(0) + ')' : rsi > 70 ? 'RSI overbought (' + rsi.toFixed(0) + ')' : (trendUp && rsi <= 55 ? 'RSI pullback sehat di uptrend (' + rsi.toFixed(0) + ')' : 'RSI netral (' + rsi.toFixed(0) + ')'),\n  macd: macdVal.histogram > 0 ? 'momentum MACD bullish' : 'momentum MACD bearish',\n  bollinger: percentB < 0.2 ? 'harga dekat lower Bollinger Band' : percentB > 0.8 ? 'harga dekat upper Bollinger Band' : 'harga di area tengah Bollinger',\n  volatility: vol > 0.8 ? 'volatilitas sangat tinggi' : vol > 0.55 ? 'volatilitas tinggi' : 'volatilitas moderat',\n  trend: trendUp ? 'uptrend terkonfirmasi SMA20 (ADX ' + adxVal.toFixed(0) + ')' : trendDown ? 'downtrend SMA20 terkonfirmasi' : 'tren tidak jelas/sideways',\n};\nconst topReasons = Object.keys(contribs).sort((a, b) => Math.abs(contribs[b]) - Math.abs(contribs[a])).slice(0, 2).map(k => reasons[k]);\n\n// Swing low 14 hari terakhir → level invalidasi tren\nconst swingLow14 = Math.min(...lows.slice(-14));\n\nconst techResult = {\n  currentPrice, dataPoints: prices.length,\n  priceTimestamp: new Date(series.at(-1).ts).toISOString(),\n  technicalScore: Number(technicalScore.toFixed(6)),\n  topIndicator: topInd, topReasons,\n  indicators: { rsi14: Number(rsi.toFixed(2)), macdHistogram: Number(macdVal.histogram.toFixed(6)), bollingerPercentB: Number(percentB.toFixed(4)), historicalVolatilityAnnualized: Number(vol.toFixed(4)) },\n  indicatorScores: scores, indicatorContributions: contribs,\n  trendDir, adxVal: Number(adxVal.toFixed(1)),\n  sma20: sma20val ? Number(sma20val.toFixed(2)) : null,\n  atrVal: Number(atrVal.toFixed(2)),\n  swingLow14: Number(swingLow14.toFixed(2)),\n  bands: { upper: Number(bands.upper.toFixed(2)), lower: Number(bands.lower.toFixed(2)), middle: Number(bands.middle.toFixed(2)) },\n};\n\nconst pos = statCtx.position;\nconst cfg = $('Config').first().json;\n\nconst entryPrice = Number(pos.harga_beli);\nconst modalIdr = Number(pos.modal_idr);\nconst tpPrice = Number(pos.target_profit);\nconst slPrice = Number(pos.stop_loss);\nconst currPrice = techResult.currentPrice;\n\nconst pnlPct = Number(((currPrice - entryPrice) / entryPrice * 100).toFixed(2));\nconst pnlIdr = Math.round(modalIdr * (pnlPct / 100));\nconst currVal = modalIdr + pnlIdr;\n\nconst distToTp = Number(((tpPrice - currPrice) / currPrice * 100).toFixed(1));\nconst distToSl = Number(((currPrice - slPrice) / currPrice * 100).toFixed(1));\n\nconst isProfit = pnlPct >= 0;\nconst pnlIcon = isProfit ? '🟢' : '🔴';\nconst fmt = v => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(v);\n\n// Evaluasi Rekomendasi Khusus Holder\nlet recBadge = '', recDesc = '';\nif (currPrice >= tpPrice) {\n  recBadge = '🟢 TAKE PROFIT (TARGET TERCAPAI)';\n  recDesc = 'Harga telah menyentuh target profit (' + (isProfit ? '+' : '') + pnlPct + '%). Sangat disarankan untuk mengeksekusi <code>/sell ' + statCtx.sym + '</code> untuk mengunci keuntungan penuh atau pasang trailing stop ketat.';\n} else if (currPrice <= slPrice || (techResult.swingLow14 && currPrice < techResult.swingLow14 && pnlPct < -3)) {\n  recBadge = '🔴 CUT LOSS (LEVEL PROTEKSI TERSENTUH)';\n  recDesc = 'Harga telah menembus batas risiko (' + pnlPct + '%). Sangat disarankan eksekusi <code>/sell ' + statCtx.sym + '</code> untuk mengamankan sisa modal dan menunggu setup baru.';\n} else if (pnlPct < -3 && techResult.trendDir > 0 && techResult.indicators.rsi14 < 45) {\n  recBadge = '🔵 PERTIMBANGKAN DCA (PULLBACK SEHAT)';\n  recDesc = 'Tren makro masih bullish namun harga terkoreksi di bawah harga modal. Sangat menarik untuk di-average down (<code>/buy ' + statCtx.sym + ' [modal]</code>) jika alokasi modal tersedia.';\n} else if (pnlPct > 6 && techResult.indicators.rsi14 > 68) {\n  recBadge = '🟡 AMANKAN MODAL (PASANG TRAILING STOP)';\n  recDesc = 'Posisi sedang floating profit +' + pnlPct + '% dan indikator RSI mendekati jenuh beli. Pertimbangkan memindahkan stop loss mental ke harga modal (BEP).';\n} else {\n  recBadge = '🟡 HOLD (POSISI BERJALAN ON TRACK)';\n  recDesc = 'Posisi berjalan normal di dalam koridor risiko dan tren masih mendukung. Tetap bersabar menunggu target profit tercapai.';\n}\n\nconst trendTag = techResult.trendDir > 0 ? 'Uptrend ▲' : techResult.trendDir < 0 ? 'Downtrend ▼' : 'Sideways ↔';\nconst adxTag = (techResult.adxVal || 0) > 25 ? 'Kuat (' + techResult.adxVal + ')' : 'Moderat (' + (techResult.adxVal || 0) + ')';\n\nconst msg = [\n  '📊 <b>Evaluasi Posisi: ' + statCtx.sym + ' (' + pos.nama + ')</b>',\n  '',\n  '💰 Harga Beli: ' + fmt(entryPrice),\n  '📍 Harga Saat Ini: ' + fmt(currPrice),\n  '💵 Alokasi Modal: ' + fmt(modalIdr) + ' (Estimasi Nilai: ' + fmt(currVal) + ')',\n  '📈 <b>Floating PnL:</b> ' + pnlIcon + ' ' + (isProfit ? '+' : '') + pnlPct + '% (' + (isProfit ? '+' : '') + fmt(pnlIdr) + ')',\n  '',\n  '🎯 <b>Target Profit:</b> ' + fmt(tpPrice) + ' (sisa ' + (distToTp > 0 ? '+' : '') + distToTp + '%)',\n  '🛑 <b>Stop Loss:</b> ' + fmt(slPrice) + ' (jarak toleransi ' + distToSl + '%)',\n  '',\n  '📐 <b>Kondisi Teknikal Saat Ini:</b>',\n  '• RSI (14): ' + techResult.indicators.rsi14 + ' | MACD: ' + (techResult.indicators.macdHistogram > 0 ? '▲ Bullish' : '▼ Bearish'),\n  '• Tren: ' + trendTag + ' | ADX: ' + adxTag,\n  '• Swing Low (14h): ' + fmt(techResult.swingLow14 || 0),\n  '',\n  '💡 <b>Saran Keputusan:</b>',\n  '<b>' + recBadge + '</b>',\n  '<i>' + recDesc + '</i>',\n  '',\n  '⚠️ <i>Decision support only. Eksekusi jual/beli tetap di tangan kamu.</i>',\n].join('\\n');\n\nreturn [{ json: { telegramMessage: msg, chatId: cfg.telegramChatId, botToken: cfg.botToken } }];"
+      },
+      "id": "B8207",
+      "name": "Build Stat Report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1580,
+        1620
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $json.botToken || $('Config').first().json.botToken }}/sendMessage",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ chat_id: $json.chatId || $('Config').first().json.telegramChatId, text: $json.telegramMessage, parse_mode: \"HTML\", disable_web_page_preview: true }) }}",
+        "options": {
+          "timeout": 15000,
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "B8208",
+      "name": "Send Stat Report",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1820,
+        1620
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "url": "=https://api.coingecko.com/api/v3/coins/markets?vs_currency={{ $('Config').first().json.quoteCurrency }}&order=market_cap_desc&per_page=100&page=1&price_change_percentage=24h,7d",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "B8301",
+      "name": "CoinGecko Rec Markets",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        380,
+        1950
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 3000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const cfg = $('Config').first().json;\nconst coins = $input.all().map(i => i.json);\n\nif (!coins.length || !coins[0] || !coins[0].id) {\n  return [{ json: { telegramMessage: '⏳ Data pasar sedang padat. Silakan coba /rec beberapa saat lagi.', chatId: cfg.telegramChatId, botToken: cfg.botToken } }];\n}\n\nconst stableSet = new Set(['usdt', 'usdc', 'dai', 'fdusd', 'usde', 'tusd', 'usdd', 'pyusd', 'bousd', 'wbtc', 'steth', 'weth', 'weeth', 'wsteth']);\n\n// Filter koin likuid non-stable\nconst screened = coins.filter(c => {\n  const sym = (c.symbol || '').toLowerCase();\n  if (stableSet.has(sym)) return false;\n  const p7d = c.price_change_percentage_7d_in_currency;\n  const p24h = c.price_change_percentage_24h;\n  if (typeof p7d !== 'number' || typeof p24h !== 'number') return false;\n  // Uptrend 7d, koreksi sehat 24h (-8% s/d -0.5%)\n  return p7d >= 2.5 && p24h <= -0.5 && p24h >= -8.5;\n});\n\n// Urutkan berdasarkan kekuatan tren 7d\nscreened.sort((a, b) => (b.price_change_percentage_7d_in_currency || 0) - (a.price_change_percentage_7d_in_currency || 0));\n\n// Jika kurang dari 3, fallback ke koin tren positif dengan koreksi ringan\nlet picks = screened.slice(0, 3);\nif (picks.length < 3) {\n  const fallback = coins.filter(c => {\n    const sym = (c.symbol || '').toLowerCase();\n    if (stableSet.has(sym)) return false;\n    if (picks.some(p => p.id === c.id)) return false;\n    const p7d = c.price_change_percentage_7d_in_currency;\n    const p24h = c.price_change_percentage_24h;\n    return typeof p7d === 'number' && typeof p24h === 'number' && p7d >= 0 && p24h <= 1.0;\n  });\n  fallback.sort((a, b) => (b.price_change_percentage_7d_in_currency || 0) - (a.price_change_percentage_7d_in_currency || 0));\n  picks = picks.concat(fallback.slice(0, 3 - picks.length));\n}\n\nconst fmt = v => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(v);\n\nconst cards = picks.map((c, i) => {\n  const price = c.current_price || 0;\n  const p7d = (c.price_change_percentage_7d_in_currency || 0).toFixed(1);\n  const p24h = (c.price_change_percentage_24h || 0).toFixed(1);\n  const entryLow = fmt(Math.round(price * 0.98));\n  const entryHigh = fmt(price);\n  const tp = fmt(Math.round(price * 1.12));\n  const sl = fmt(Math.round(price * 0.94));\n\n  return [\n    (i + 1) + '️⃣ <b>' + c.symbol.toUpperCase() + ' (' + c.name + ')</b>',\n    '• Harga Sekarang: ' + fmt(price),\n    '• Momentum: 📈 7d: +' + p7d + '% | 📉 24h: ' + p24h + '% (Diskon)',\n    '• Area Entry Ideal: ' + entryLow + ' – ' + entryHigh,\n    '• Target TP (+12%): ' + tp + ' | SL (-6%): ' + sl,\n    '👉 <i>Beli & pantau:</i> <code>/buy ' + c.symbol.toLowerCase() + ' 150k</code>',\n  ].join('\\n');\n});\n\nconst now = new Intl.DateTimeFormat('id-ID', { timeZone: cfg.timezone, timeStyle: 'short' }).format(new Date());\n\nconst msg = [\n  '🎯 <b>Radar Rekomendasi Swing Entry Luna Hernandez</b>',\n  '<i>' + now + ' WIB | Kriteria: Uptrend Mingguan + Pullback Sehat 24 Jam</i>',\n  '',\n  cards.join('\\n\\n'),\n  '',\n  '💡 <i>Ketik <code>/coin &lt;simbol&gt;</code> untuk bedah teknikal lengkap & berita live.</i>\\n' +\n  '<i>Ketik <code>/buy &lt;simbol&gt; [modal]</code> untuk langsung memasukkan ke portofolio.</i>\\n' +\n  '⚠️ <i>Decision support only. Bukan saran finansial.</i>',\n].join('\\n');\n\nreturn [{ json: { telegramMessage: msg, chatId: cfg.telegramChatId, botToken: cfg.botToken } }];"
+      },
+      "id": "B8302",
+      "name": "Format Rec Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        620,
+        1950
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $json.botToken || $('Config').first().json.botToken }}/sendMessage",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ chat_id: $json.chatId || $('Config').first().json.telegramChatId, text: $json.telegramMessage, parse_mode: \"HTML\", disable_web_page_preview: true }) }}",
+        "options": {
+          "timeout": 15000,
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "B8303",
+      "name": "Send Rec Message",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        860,
+        1950
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 */2 * * *"
+            }
+          ]
+        }
+      },
+      "id": "C1001",
+      "name": "Cron Every 2h",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        -1000,
+        2250
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{\n  json: {\n    timezone: 'Asia/Jakarta',\n    telegramChatId: '1536791393',\n    botToken: '8739615976:AAHKY58pJU_-zniOHvRz93-7H-9neg3TL-Y',\n    ollamaBaseUrl: 'http://host.docker.internal:11434',\n    ollamaModel: 'qwen3.5:2b',\n    sqlitePath: '/home/node/.n8n/crypto_decision_support.sqlite',\n    geminiApiKey: 'AQ.Ab8RN6Jvs4yGhGg8RsBHTIvEhaF88qWdX7pXWoH5b--AspiBsw',\n    geminiModel: 'gemini-3.5-flash-lite',\n    quoteCurrency: 'idr',\n    marketDays: 60,\n    technicalWeights: { rsi: 0.25, macd: 0.30, bollinger: 0.25, volatility: 0.10, trend: 0.10 },\n    decisionWeights: { sentiment: 0.40, technical: 0.60 },\n    thresholds: { buy: 0.20, sell: -0.20 },\n  },\n}];"
+      },
+      "id": "C1002",
+      "name": "Config Cron",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -700,
+        2250
+      ],
+      "notesInFlow": true,
+      "notes": "Config untuk cron execution"
+    },
+    {
+      "parameters": {
+        "executeOnce": false,
+        "command": "node /home/node/.n8n/manage_positions.mjs check-alerts"
+      },
+      "id": "C1003",
+      "name": "Exec Check Alerts",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        -400,
+        2250
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = ($input.first().json.stdout || '').trim();\nconst cfg = $('Config Cron').first().json;\n\nlet res = null;\ntry {\n  res = JSON.parse(raw);\n} catch (e) {}\n\nconst alerts = res?.alerts || [];\n\nif (!alerts.length) {\n  return [{ json: { hasAlerts: false } }];\n}\n\nconst fmt = v => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(v);\n\nconst alertItems = alerts.map(a => {\n  if (a.type === 'TP_HIT') {\n    return [\n      '🟢 <b>TARGET PROFIT TERSENTUH: ' + a.simbol + ' (' + a.nama + ')</b>',\n      '• Harga Sekarang: ' + fmt(a.currentPrice),\n      '• Target TP: ' + fmt(a.targetProfit) + ' (' + (a.pnlPct >= 0 ? '+' : '') + a.pnlPct + '%)',\n      '👉 <i>Ketik <code>/sell ' + a.simbol.toLowerCase() + '</code> untuk mengunci keuntungan sekarang!</i>',\n    ].join('\\n');\n  } else {\n    return [\n      '🔴 <b>STOP LOSS TERSENTUH: ' + a.simbol + ' (' + a.nama + ')</b>',\n      '• Harga Sekarang: ' + fmt(a.currentPrice),\n      '• Batas SL: ' + fmt(a.stopLoss) + ' (' + a.pnlPct + '%)',\n      '👉 <i>Ketik <code>/sell ' + a.simbol.toLowerCase() + '</code> untuk membatasi kerugian!</i>',\n    ].join('\\n');\n  }\n});\n\nconst msg = [\n  '🔔 <b>LUNA HERNANDEZ AUTO-ALERT: Notifikasi Pergerakan Posisi</b>',\n  '',\n  alertItems.join('\\n\\n'),\n  '',\n  '⚠️ <i>Periksa detail status di <code>/stat &lt;simbol&gt;</code> atau <code>/portfolio</code>.</i>',\n].join('\\n');\n\nreturn [{ json: {\n  hasAlerts: true,\n  telegramMessage: msg,\n  chatId: cfg.telegramChatId,\n  botToken: cfg.botToken,\n}}];"
+      },
+      "id": "C1004",
+      "name": "Format Cron Alerts",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -160,
+        2250
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.hasAlerts }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "C1005",
+      "name": "Has Alerts?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        80,
+        2250
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $json.botToken || $('Config').first().json.botToken }}/sendMessage",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ chat_id: $json.chatId || $('Config').first().json.telegramChatId, text: $json.telegramMessage, parse_mode: \"HTML\", disable_web_page_preview: true }) }}",
+        "options": {
+          "timeout": 15000,
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "C1006",
+      "name": "Send Cron Alert",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        320,
+        2250
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000,
+      "onError": "continueRegularOutput"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Telegram Webhook": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Parse Incoming Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Incoming Message": {
+      "main": [
+        [
+          {
+            "node": "Has Command?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Command?": {
+      "main": [
+        [
+          {
+            "node": "Command Router",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Command Router": {
+      "main": [
+        [
+          {
+            "node": "CoinGecko Search",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Fetch Ask News",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare List Positions",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "CoinGecko Markets",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Read History",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build Start",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build Help",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "CoinGecko Search Buy",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Sell Query",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Stat Query",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "CoinGecko Rec Markets",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Unknown Command",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Start": {
+      "main": [
+        [
+          {
+            "node": "Send Start",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Help": {
+      "main": [
+        [
+          {
+            "node": "Send Help",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CoinGecko Search": {
+      "main": [
+        [
+          {
+            "node": "Extract Coin ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Coin ID": {
+      "main": [
+        [
+          {
+            "node": "CoinGecko Market Chart",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send Coin Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CoinGecko Market Chart": {
+      "main": [
+        [
+          {
+            "node": "Fetch BTC Gate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch BTC Gate": {
+      "main": [
+        [
+          {
+            "node": "BTC Gate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "BTC Gate": {
+      "main": [
+        [
+          {
+            "node": "Coin Technical",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Coin Technical": {
+      "main": [
+        [
+          {
+            "node": "Fetch Google News",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Google News": {
+      "main": [
+        [
+          {
+            "node": "Parse News",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse News": {
+      "main": [
+        [
+          {
+            "node": "Prepare Read Prev",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Read Prev": {
+      "main": [
+        [
+          {
+            "node": "Read Previous Analysis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Previous Analysis": {
+      "main": [
+        [
+          {
+            "node": "Parse Previous Analysis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Previous Analysis": {
+      "main": [
+        [
+          {
+            "node": "Prepare Gemini Coin Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Gemini Coin Prompt": {
+      "main": [
+        [
+          {
+            "node": "Gemini Coin Research",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini Coin Research": {
+      "main": [
+        [
+          {
+            "node": "Build Coin Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Coin Report": {
+      "main": [
+        [
+          {
+            "node": "Send Coin Report",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Prepare Save Coin",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Save Coin": {
+      "main": [
+        [
+          {
+            "node": "Save Coin Analysis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Ask News": {
+      "main": [
+        [
+          {
+            "node": "Parse Ask News",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Ask News": {
+      "main": [
+        [
+          {
+            "node": "Prepare Read Sessions",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Read Sessions": {
+      "main": [
+        [
+          {
+            "node": "Read Recent Sessions",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Recent Sessions": {
+      "main": [
+        [
+          {
+            "node": "Build Ask With Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Ask With Context": {
+      "main": [
+        [
+          {
+            "node": "Gemini Ask",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini Ask": {
+      "main": [
+        [
+          {
+            "node": "Format Ask Answer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Ask Answer": {
+      "main": [
+        [
+          {
+            "node": "Send Ask",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Prepare Save Ask",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Save Ask": {
+      "main": [
+        [
+          {
+            "node": "Save Ask Session",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare List Positions": {
+      "main": [
+        [
+          {
+            "node": "Query List Positions",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Query List Positions": {
+      "main": [
+        [
+          {
+            "node": "Process Portfolio Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Portfolio Check": {
+      "main": [
+        [
+          {
+            "node": "Has Active Positions?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Active Positions?": {
+      "main": [
+        [
+          {
+            "node": "Fetch Portfolio Prices",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send Empty Portfolio",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Portfolio Prices": {
+      "main": [
+        [
+          {
+            "node": "Format Dynamic Portfolio",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Dynamic Portfolio": {
+      "main": [
+        [
+          {
+            "node": "Send Dynamic Portfolio",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CoinGecko Markets": {
+      "main": [
+        [
+          {
+            "node": "Format Market",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Market": {
+      "main": [
+        [
+          {
+            "node": "Send Market",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read History": {
+      "main": [
+        [
+          {
+            "node": "Build History",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build History": {
+      "main": [
+        [
+          {
+            "node": "Send History",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Unknown Command": {
+      "main": [
+        [
+          {
+            "node": "Send Unknown",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CoinGecko Search Buy": {
+      "main": [
+        [
+          {
+            "node": "Extract Buy Coin",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Buy Coin": {
+      "main": [
+        [
+          {
+            "node": "Is Buy Found?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Buy Found?": {
+      "main": [
+        [
+          {
+            "node": "Fetch Buy Chart",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send Buy Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Buy Chart": {
+      "main": [
+        [
+          {
+            "node": "Prepare Buy Exec",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Buy Exec": {
+      "main": [
+        [
+          {
+            "node": "Execute Buy DB",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute Buy DB": {
+      "main": [
+        [
+          {
+            "node": "Format Buy Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Buy Response": {
+      "main": [
+        [
+          {
+            "node": "Send Buy Confirm",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Sell Query": {
+      "main": [
+        [
+          {
+            "node": "Execute Sell Query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute Sell Query": {
+      "main": [
+        [
+          {
+            "node": "Process Sell Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Sell Check": {
+      "main": [
+        [
+          {
+            "node": "Is Sell Found?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Sell Found?": {
+      "main": [
+        [
+          {
+            "node": "Fetch Sell Price",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send Sell Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Sell Price": {
+      "main": [
+        [
+          {
+            "node": "Prepare Close Position",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Close Position": {
+      "main": [
+        [
+          {
+            "node": "Execute Close Command",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute Close Command": {
+      "main": [
+        [
+          {
+            "node": "Format Sell Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Sell Response": {
+      "main": [
+        [
+          {
+            "node": "Send Sell Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Stat Query": {
+      "main": [
+        [
+          {
+            "node": "Execute Stat Query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute Stat Query": {
+      "main": [
+        [
+          {
+            "node": "Process Stat Position",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Stat Position": {
+      "main": [
+        [
+          {
+            "node": "Is Stat Found?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Stat Found?": {
+      "main": [
+        [
+          {
+            "node": "Fetch Stat Chart",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send Stat Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Stat Chart": {
+      "main": [
+        [
+          {
+            "node": "Build Stat Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Stat Report": {
+      "main": [
+        [
+          {
+            "node": "Send Stat Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CoinGecko Rec Markets": {
+      "main": [
+        [
+          {
+            "node": "Format Rec Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Rec Message": {
+      "main": [
+        [
+          {
+            "node": "Send Rec Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cron Every 2h": {
+      "main": [
+        [
+          {
+            "node": "Config Cron",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config Cron": {
+      "main": [
+        [
+          {
+            "node": "Exec Check Alerts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Exec Check Alerts": {
+      "main": [
+        [
+          {
+            "node": "Format Cron Alerts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Cron Alerts": {
+      "main": [
+        [
+          {
+            "node": "Has Alerts?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Alerts?": {
+      "main": [
+        [
+          {
+            "node": "Send Cron Alert",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Asia/Jakarta",
+    "saveManualExecutions": true,
+    "saveExecutionProgress": false,
+    "saveDataErrorExecution": "last",
+    "saveDataSuccessExecution": "all"
+  },
+  "versionId": "B9000000-0000-4000-8000-000000000006",
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "tags": []
+}
