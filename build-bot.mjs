@@ -295,7 +295,7 @@ const msg = [
   '• <code>/portfolio</code> — Ringkasan koin aktif, total modal, & PnL portofolio',
   '• <code>/history &lt;simbol&gt;</code> — Cek riwayat analisis tersimpan',
   '',
-  '🔔 <i>Auto-Alert: Bot otomatis cek setiap 2 jam dan kirim notifikasi saat TP/SL tersentuh!</i>',
+  '🔔 <i>Auto-Alert: Bot otomatis cek setiap 30 menit dan kirim notifikasi saat TP/SL tersentuh!</i>',
   '⚠️ <i>Decision support only, bukan saran finansial.</i>',
   '',
   'Ketik <code>/help</code> kapan saja untuk melihat ringkasan perintah.',
@@ -1833,8 +1833,8 @@ const nodes = [
   codeNode('N1007', 'Format News Report', code.formatNewsReport, 1820, -200),
   tgSend('N1008', 'Send News Report', 2060, -200),
 
-  // Cron Alert (Runs every 2 hours in background)
-  scheduleTrigger('C1001', 'Cron Every 2h', '0 */2 * * *', -1000, 2250),
+  // Cron Alert (Runs every 30 minutes in background)
+  scheduleTrigger('C1001', 'Cron Every 30m', '*/30 * * * *', -1000, 2250),
   codeNode('C1002', 'Config Cron', code.config, -700, 2250, 'Config untuk cron execution'),
   execNode('C1003', 'Exec Check Alerts', 'node /home/node/.n8n/manage_positions.mjs check-alerts', -400, 2250),
   codeNode('C1004', 'Format Cron Alerts', code.formatCronAlerts, -160, 2250),
@@ -1980,7 +1980,7 @@ const connections = {
   'Format News Report':       { main: [[{ node: 'Send News Report', type: 'main', index: 0 }]] },
 
   // Cron Alert
-  'Cron Every 2h':            { main: [[{ node: 'Config Cron', type: 'main', index: 0 }]] },
+  'Cron Every 30m':           { main: [[{ node: 'Config Cron', type: 'main', index: 0 }]] },
   'Config Cron':              { main: [[{ node: 'Exec Check Alerts', type: 'main', index: 0 }]] },
   'Exec Check Alerts':        { main: [[{ node: 'Format Cron Alerts', type: 'main', index: 0 }]] },
   'Format Cron Alerts':       { main: [[{ node: 'Has Alerts?', type: 'main', index: 0 }]] },
