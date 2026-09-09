@@ -36,7 +36,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const cfg = $('Config').first().json;\nconst raw = $('Telegram Webhook').first().json;\n\n// Ekstrak pesan Telegram dari berbagai struktur webhook n8n\nconst body = raw.body || raw;\nconst msg = body.message || body.channel_post || body.edited_message || raw;\n\nif (!msg || !msg.text) {\n  return [{ json: { hasCommand: false, command: '__none__' } }];\n}\n\n// Cek chat ID pengirim (hanya izinkan chat terdaftar)\nconst senderChatId = msg.chat ? msg.chat.id : (raw.chat ? raw.chat.id : null);\nif (String(senderChatId) !== String(cfg.telegramChatId)) {\n  return [{ json: { hasCommand: false, command: '__none__' } }];\n}\n\nconst text = msg.text.trim();\nlet command = '__none__', args = '';\n\nif (text.startsWith('/')) {\n  const parts = text.slice(1).split(/\\s+/);\n  command = parts[0].toLowerCase().split('@')[0];\n  args = parts.slice(1).join(' ').trim();\n} else {\n  // Jika user mengetik pesan biasa tanpa tanda '/', otomatis anggap sebagai /ask\n  command = 'ask';\n  args = text;\n}\n\n// Alias command\nif (command === 'signal' || command === 'signals' || command === 'porto') command = 'portfolio';\nif (command === 'recommendation' || command === 'rekomendasi') command = 'rec';\nif (command === 'status') command = 'stat';\n\nlet coinArg = '', modalArg = 100000;\nif (args) {\n  const parts = args.split(/\\s+/);\n  coinArg = parts[0] ? parts[0].trim().toUpperCase() : '';\n  if (parts[1]) {\n    let m = parts[1].toLowerCase().replace(/[,._]/g, '');\n    if (m.endsWith('k')) m = parseFloat(m) * 1000;\n    else if (m.endsWith('jt') || m.endsWith('m') || m.endsWith('juta')) m = parseFloat(m) * 1000000;\n    else m = parseFloat(m);\n    if (Number.isFinite(m) && m > 0) modalArg = m;\n  }\n}\n\nreturn [{ json: {\n  command,\n  args,\n  coinArg,\n  modalArg,\n  from: (msg.from && msg.from.first_name) || 'Trader',\n  chatId: senderChatId,\n  hasCommand: command !== '__none__',\n  rawText: text,\n  botToken: cfg.botToken,\n} }];"
+        "jsCode": "const cfg = $('Config').first().json;\nconst raw = $('Telegram Webhook').first().json;\n\n// Ekstrak pesan Telegram dari berbagai struktur webhook n8n\nconst body = raw.body || raw;\nconst msg = body.message || body.channel_post || body.edited_message || raw;\n\nif (!msg || !msg.text) {\n  return [{ json: { hasCommand: false, command: '__none__' } }];\n}\n\n// Cek chat ID pengirim (hanya izinkan chat terdaftar)\nconst senderChatId = msg.chat ? msg.chat.id : (raw.chat ? raw.chat.id : null);\nif (String(senderChatId) !== String(cfg.telegramChatId)) {\n  return [{ json: { hasCommand: false, command: '__none__' } }];\n}\n\nconst text = msg.text.trim();\nlet command = '__none__', args = '';\n\nif (text.startsWith('/')) {\n  const parts = text.slice(1).split(/\\s+/);\n  command = parts[0].toLowerCase().split('@')[0];\n  args = parts.slice(1).join(' ').trim();\n} else {\n  // Jika user mengetik pesan biasa tanpa tanda '/', otomatis anggap sebagai /ask\n  command = 'ask';\n  args = text;\n}\n\n// Alias command\nif (command === 'signal' || command === 'signals' || command === 'porto') command = 'portfolio';\nif (command === 'recommendation' || command === 'rekomendasi') command = 'rec';\nif (command === 'status') command = 'stat';\nif (command === 'berita' || command === 'kabar') command = 'news';\n\nlet coinArg = '', modalArg = 100000;\nif (args) {\n  const parts = args.split(/\\s+/);\n  coinArg = parts[0] ? parts[0].trim().toUpperCase() : '';\n  if (parts[1]) {\n    let m = parts[1].toLowerCase().replace(/[,._]/g, '');\n    if (m.endsWith('k')) m = parseFloat(m) * 1000;\n    else if (m.endsWith('jt') || m.endsWith('m') || m.endsWith('juta')) m = parseFloat(m) * 1000000;\n    else m = parseFloat(m);\n    if (Number.isFinite(m) && m > 0) modalArg = m;\n  }\n}\n\nreturn [{ json: {\n  command,\n  args,\n  coinArg,\n  modalArg,\n  from: (msg.from && msg.from.first_name) || 'Trader',\n  chatId: senderChatId,\n  hasCommand: command !== '__none__',\n  rawText: text,\n  botToken: cfg.botToken,\n} }];"
       },
       "id": "W0005",
       "name": "Parse Incoming Message",
@@ -270,6 +270,23 @@
               },
               "renameOutput": true,
               "outputKey": "rec"
+            },
+            {
+              "conditions": {
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.command }}",
+                    "rightValue": "news",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "news"
             }
           ]
         },
@@ -286,7 +303,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const update = $('Parse Incoming Message').first().json;\nconst cfg = $('Config').first().json;\nconst userName = update.from || 'Trader';\n\nconst msg = [\n  '👋 <b>Halo ' + userName + '! Gue Luna Hernandez.</b>',\n  'Asisten decision support & riset crypto personal lo.',\n  '',\n  'Gue di sini buat bantu lo menganalisis pasar sebelum eksekusi, baik koin besar (BTC/ETH) maupun koin gorengan/altcoin cepat.',\n  '',\n  '🚀 <b>Fitur Utama Luna Hernandez Bot:</b>',\n  '',\n  '1️⃣ <b>Deep Analysis Koin</b> <code>/coin &lt;simbol&gt;</code>',\n  'Hitung teknikal komprehensif (RSI, MACD, BB, ADX, SMA20), <b>browsing 10 berita Google News live</b>, histori SQLite, & dirangkum AI Gemini.',\n  '👉 <i>Coba:</i> <code>/coin sol</code>, <code>/coin aero</code>, <code>/coin btc</code>',\n  '',\n  '2️⃣ <b>Riset Bebas Live + Memori</b> <code>/ask &lt;pertanyaan&gt;</code>',\n  'Tanya kondisi pasar atau sentimen. Bot <b>browsing Google News live</b> + <b>ingat percakapan sebelumnya</b>.',\n  '👉 <i>Coba:</i> <code>/ask bagaimana peluang swing trading minggu ini?</code>',\n  '',\n  '3️⃣ <b>Radar Pasar & Rekomendasi</b>',\n  '• <code>/rec</code> — 3 rekomendasi koin pullback sehat untuk swing entry',\n  '• <code>/market</code> — Top 5 gainers & losers 24 jam dalam IDR',\n  '',\n  '4️⃣ <b>Manajemen Posisi & Portofolio</b>',\n  '• <code>/buy &lt;simbol&gt; [modal]</code> — Catat beli & pantau ketat (e.g. <code>/buy sol 150k</code>)',\n  '• <code>/stat &lt;simbol&gt;</code> — Evaluasi posisi: PnL, rekomendasi Hold/TP/SL/DCA',\n  '• <code>/sell &lt;simbol&gt;</code> — Tutup posisi, hitung PnL, & unlist dari pantauan',\n  '• <code>/portfolio</code> — Ringkasan koin aktif, total modal, & PnL portofolio',\n  '• <code>/history &lt;simbol&gt;</code> — Cek riwayat analisis tersimpan',\n  '',\n  '🔔 <i>Auto-Alert: Bot otomatis cek setiap 2 jam dan kirim notifikasi saat TP/SL tersentuh!</i>',\n  '⚠️ <i>Decision support only, bukan saran finansial.</i>',\n  '',\n  'Ketik <code>/help</code> kapan saja untuk melihat ringkasan perintah.',\n].join('\\n');\n\nreturn [{ json: { telegramMessage: msg, chatId: cfg.telegramChatId, botToken: cfg.botToken } }];"
+        "jsCode": "const update = $('Parse Incoming Message').first().json;\nconst cfg = $('Config').first().json;\nconst userName = update.from || 'Trader';\n\nconst msg = [\n  '👋 <b>Halo ' + userName + '! Gue Luna Hernandez.</b>',\n  'Asisten decision support & riset crypto personal lo.',\n  '',\n  'Gue di sini buat bantu lo menganalisis pasar sebelum eksekusi, baik koin besar (BTC/ETH) maupun koin gorengan/altcoin cepat.',\n  '',\n  '🚀 <b>Fitur Utama Luna Hernandez Bot:</b>',\n  '',\n  '1️⃣ <b>Deep Analysis Koin</b> <code>/coin &lt;simbol&gt;</code>',\n  'Hitung teknikal komprehensif (RSI, MACD, BB, ADX, SMA20), <b>browsing 10 berita Google News live</b>, histori SQLite, & dirangkum AI Gemini.',\n  '👉 <i>Coba:</i> <code>/coin sol</code>, <code>/coin aero</code>, <code>/coin btc</code>',\n  '',\n  '2️⃣ <b>Riset Bebas Live + Memori</b> <code>/ask &lt;pertanyaan&gt;</code>',\n  'Tanya kondisi pasar atau sentimen. Bot <b>browsing Google News live</b> + <b>ingat percakapan sebelumnya</b>.',\n  '👉 <i>Coba:</i> <code>/ask bagaimana peluang swing trading minggu ini?</code>',\n  '',\n  '3️⃣ <b>Radar Pasar & Rekomendasi</b>',\n  '• <code>/rec</code> — 3 rekomendasi koin pullback sehat untuk swing entry',\n  '• <code>/news &lt;simbol&gt;</code> — Headline berita live & analisis sentimen AI (e.g. <code>/news sol</code>)',\n  '• <code>/market</code> — Top 5 gainers & losers 24 jam dalam IDR',\n  '',\n  '4️⃣ <b>Manajemen Posisi & Portofolio</b>',\n  '• <code>/buy &lt;simbol&gt; [modal]</code> — Catat beli & pantau ketat (e.g. <code>/buy sol 150k</code>)',\n  '• <code>/stat &lt;simbol&gt;</code> — Evaluasi posisi: PnL, rekomendasi Hold/TP/SL/DCA',\n  '• <code>/sell &lt;simbol&gt;</code> — Tutup posisi, hitung PnL, & unlist dari pantauan',\n  '• <code>/portfolio</code> — Ringkasan koin aktif, total modal, & PnL portofolio',\n  '• <code>/history &lt;simbol&gt;</code> — Cek riwayat analisis tersimpan',\n  '',\n  '🔔 <i>Auto-Alert: Bot otomatis cek setiap 2 jam dan kirim notifikasi saat TP/SL tersentuh!</i>',\n  '⚠️ <i>Decision support only, bukan saran finansial.</i>',\n  '',\n  'Ketik <code>/help</code> kapan saja untuk melihat ringkasan perintah.',\n].join('\\n');\n\nreturn [{ json: { telegramMessage: msg, chatId: cfg.telegramChatId, botToken: cfg.botToken } }];"
       },
       "id": "B1000",
       "name": "Build Start",
@@ -337,7 +354,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const msg = [\n  '📖 <b>Daftar Perintah Luna Hernandez Bot</b>',\n  '',\n  '🎯 <b>Riset & Rekomendasi:</b>',\n  '• <code>/rec</code> — Rekomendasi 3 koin pullback sehat untuk swing entry',\n  '• <code>/coin &lt;simbol&gt;</code> — Deep analysis: RSI, MACD, Tren, Berita Live, & AI',\n  '• <code>/ask &lt;pertanyaan&gt;</code> — Riset bebas Google News Live + Memori obrolan',\n  '• <code>/market</code> — Top 5 gainers & losers 24 jam (IDR)',\n  '',\n  '💼 <b>Portofolio & Posisi Aktif:</b>',\n  '• <code>/buy &lt;simbol&gt; [modal]</code> — Catat beli & pantau ketat (e.g. <code>/buy sol 150k</code>)',\n  '• <code>/stat &lt;simbol&gt;</code> — Evaluasi posisi: PnL, rekomendasi Hold/TP/SL/DCA',\n  '• <code>/sell &lt;simbol&gt;</code> — Tutup posisi, hitung PnL, keluarkan dari pantauan',\n  '• <code>/portfolio</code> — Ringkasan koin aktif, total modal, & PnL portofolio',\n  '• <code>/history [simbol]</code> — Riwayat analisis tersimpan di database lokal',\n  '• <code>/start</code> — Panduan interaktif & tutorial lengkap',\n  '',\n  '🔔 <i>Auto-Alert: Bot otomatis cek berkala dan kirim alert jika menyentuh TP/SL!</i>',\n  '⚠️ <i>Decision support only. Bukan saran finansial.</i>',\n].join('\\n');\nconst cfg = $('Config').first().json;\nreturn [{ json: { telegramMessage: msg, chatId: cfg.telegramChatId, botToken: cfg.botToken } }];"
+        "jsCode": "const msg = [\n  '📖 <b>Daftar Perintah Luna Hernandez Bot</b>',\n  '',\n  '🎯 <b>Riset & Rekomendasi:</b>',\n  '• <code>/rec</code> — Rekomendasi 3 koin pullback sehat untuk swing entry',\n  '• <code>/news &lt;simbol&gt;</code> — Headline berita live terhangat & analisis sentimen AI',\n  '• <code>/coin &lt;simbol&gt;</code> — Deep analysis: RSI, MACD, Tren, Berita Live, & AI',\n  '• <code>/ask &lt;pertanyaan&gt;</code> — Riset bebas Google News Live + Memori obrolan',\n  '• <code>/market</code> — Top 5 gainers & losers 24 jam (IDR)',\n  '',\n  '💼 <b>Portofolio & Posisi Aktif:</b>',\n  '• <code>/buy &lt;simbol&gt; [modal]</code> — Catat beli & pantau ketat (e.g. <code>/buy sol 150k</code>)',\n  '• <code>/stat &lt;simbol&gt;</code> — Evaluasi posisi: PnL, rekomendasi Hold/TP/SL/DCA',\n  '• <code>/sell &lt;simbol&gt;</code> — Tutup posisi, hitung PnL, keluarkan dari pantauan',\n  '• <code>/portfolio</code> — Ringkasan koin aktif, total modal, & PnL portofolio',\n  '• <code>/history [simbol]</code> — Riwayat analisis tersimpan di database lokal',\n  '• <code>/start</code> — Panduan interaktif & tutorial lengkap',\n  '',\n  '🔔 <i>Auto-Alert: Bot otomatis cek berkala dan kirim alert jika menyentuh TP/SL!</i>',\n  '⚠️ <i>Decision support only. Bukan saran finansial.</i>',\n].join('\\n');\nconst cfg = $('Config').first().json;\nreturn [{ json: { telegramMessage: msg, chatId: cfg.telegramChatId, botToken: cfg.botToken } }];"
       },
       "id": "B1001",
       "name": "Build Help",
@@ -2132,6 +2149,202 @@
     },
     {
       "parameters": {
+        "url": "=https://api.coingecko.com/api/v3/search?query={{ encodeURIComponent($('Parse Incoming Message').first().json.coinArg || $('Parse Incoming Message').first().json.args || 'bitcoin') }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "N1001",
+      "name": "CoinGecko Search News",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        380,
+        -200
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 3000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\nconst update = $('Parse Incoming Message').first().json;\nconst rawArgs = (update.args || '').trim();\nconst coinArg = (update.coinArg || '').trim();\n\nlet coinName = 'Crypto Market Global';\nlet coinSymbol = 'MARKET';\nlet searchQuery = 'crypto market bitcoin altcoin';\nlet isGeneral = false;\n\nif (!rawArgs) {\n  isGeneral = true;\n} else {\n  const coins = data.coins || [];\n  const qLower = coinArg.toLowerCase() || rawArgs.toLowerCase();\n  let coin = coins.find(c => c.symbol?.toLowerCase() === qLower);\n  if (!coin) coin = coins.find(c => c.name?.toLowerCase() === qLower);\n  if (!coin && coins.length > 0) coin = coins[0];\n\n  if (coin) {\n    coinName = coin.name;\n    coinSymbol = coin.symbol.toUpperCase();\n    searchQuery = coin.name + ' crypto';\n  } else {\n    coinName = rawArgs;\n    coinSymbol = rawArgs.toUpperCase();\n    searchQuery = rawArgs + ' crypto';\n  }\n}\n\nconst newsQueryUrl = 'https://news.google.com/rss/search?q=' + encodeURIComponent(searchQuery) + '&hl=en&gl=US&ceid=US:en';\n\nreturn [{ json: {\n  coinName,\n  coinSymbol,\n  searchQuery,\n  isGeneral,\n  newsQueryUrl,\n  chatId: update.chatId,\n  botToken: update.botToken,\n} }];"
+      },
+      "id": "N1002",
+      "name": "Resolve News Target",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        620,
+        -200
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.newsQueryUrl }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 20000,
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          }
+        }
+      },
+      "id": "N1003",
+      "name": "Fetch News Feed",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        860,
+        -200
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const xml = ($input.first().json.data || '').toString();\nconst target = $('Resolve News Target').first().json;\n\nfunction decodeHtml(str) {\n  return (str || '')\n    .replace(/&amp;/g, '&')\n    .replace(/&#39;/g, \"'\")\n    .replace(/&quot;/g, '\"')\n    .replace(/&lt;/g, '<')\n    .replace(/&gt;/g, '>')\n    .replace(/&nbsp;/g, ' ')\n    .trim();\n}\n\nfunction timeAgo(pubDateStr) {\n  try {\n    const d = new Date(pubDateStr);\n    if (isNaN(d.getTime())) return pubDateStr ? pubDateStr.slice(0, 16) : '';\n    const now = new Date();\n    const diffMs = now.getTime() - d.getTime();\n    const diffSec = Math.floor(diffMs / 1000);\n    if (diffSec < 60) return 'Baru saja';\n    const diffMin = Math.floor(diffSec / 60);\n    if (diffMin < 60) return diffMin + ' mnt lalu';\n    const diffHours = Math.floor(diffMin / 60);\n    if (diffHours < 24) return diffHours + ' jam lalu';\n    const diffDays = Math.floor(diffHours / 24);\n    if (diffDays <= 7) return diffDays + ' hari lalu';\n    return d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' });\n  } catch (e) {\n    return pubDateStr ? pubDateStr.slice(0, 16) : '';\n  }\n}\n\nconst itemBlocks = [...xml.matchAll(/<item>([\\s\\S]*?)<\\/item>/g)];\nconst articles = [];\n\nfor (const m of itemBlocks.slice(0, 12)) {\n  const c = m[1];\n  let rawTitle = (c.match(/<title><!\\[CDATA\\[([\\s\\S]*?)\\]\\]>/) || c.match(/<title>([\\s\\S]*?)<\\/title>/))?.[1] || '';\n  rawTitle = decodeHtml(rawTitle);\n\n  let source = (c.match(/<source[^>]*>([\\s\\S]*?)<\\/source>/))?.[1] || '';\n  source = decodeHtml(source);\n\n  if (rawTitle.includes(' - ')) {\n    const lastDash = rawTitle.lastIndexOf(' - ');\n    if (!source) source = rawTitle.slice(lastDash + 3).trim();\n    rawTitle = rawTitle.slice(0, lastDash).trim();\n  }\n\n  const pubDate = (c.match(/<pubDate>([\\s\\S]*?)<\\/pubDate>/))?.[1] || '';\n  const timeLabel = timeAgo(pubDate);\n\n  if (rawTitle.length > 5) {\n    articles.push({\n      title: rawTitle,\n      source: source || 'Media Crypto',\n      pubDate,\n      timeLabel,\n    });\n  }\n  if (articles.length >= 7) break;\n}\n\nreturn [{ json: {\n  ...target,\n  articles,\n  articleCount: articles.length,\n} }];"
+      },
+      "id": "N1004",
+      "name": "Parse News Feed",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        -200
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const feed = $('Parse News Feed').first().json;\nconst cfg = $('Config').first().json;\n\nlet prompt = '';\nif (feed.articleCount === 0) {\n  prompt = 'Analisis kondisi sentimen pasar crypto terkini untuk ' + feed.coinName + ' (' + feed.coinSymbol + '). Berikan ringkasan sentimen, risiko makro, dan arahan untuk swing trader.';\n} else {\n  const newsListText = feed.articles.map((a, i) => (i + 1) + '. ' + a.title + ' [' + a.source + ' - ' + a.timeLabel + ']').join('\\n');\n  prompt = [\n    'Kamu adalah analis sentimen dan intelijen berita crypto profesional untuk swing trader Indonesia.',\n    'Analisis berita live terbaru berikut untuk: ' + feed.coinName + ' (' + feed.coinSymbol + ').',\n    '',\n    'DAFTAR BERITA LIVE TERBARU:',\n    newsListText,\n    '',\n    'INSTRUKSI ANALISIS (JAWAB DALAM BAHASA INDONESIA, SINGKAT & PADAT):',\n    '1. KESIMPULAN SENTIMEN: Tentukan sentimen pasar (BULLISH / BEARISH / NETRAL) dan berikan Skor Sentimen (1 sampai 10).',\n    '2. KATALIS UTAMA: Rangkum 2-3 poin berita paling berdampak atau narasi pasar utama (apa yang sebenarnya terjadi di balik berita).',\n    '3. DAMPAK KE SWING TRADING: Jelaskan apakah berita ini mendukung aksi beli/re-entry, pertanda potensi koreksi (sell the news), atau sekadar rumor/volatilitas jangka pendek.',\n    '',\n    'ATURAN FORMAT:',\n    '- JANGAN gunakan tanda bintang ganda tebal (**), gunakan penomoran atau bullet bersih.',\n    '- Maksimal 150 kata total agar pas dibaca cepat di Telegram mobile.',\n  ].join('\\n');\n}\n\nconst geminiBody = {\n  contents: [{ parts: [{ text: prompt }] }],\n  generationConfig: { maxOutputTokens: 1000, temperature: 0.2, thinkingConfig: { thinkingBudget: 512 } },\n};\n\nreturn [{ json: {\n  ...feed,\n  geminiBody,\n  chatId: feed.chatId,\n  botToken: feed.botToken,\n} }];"
+      },
+      "id": "N1005",
+      "name": "Prepare Gemini News Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1340,
+        -200
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ 'https://generativelanguage.googleapis.com/v1beta/models/' + $('Config').first().json.geminiModel + ':generateContent?key=' + $('Config').first().json.geminiApiKey }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.geminiBody) }}",
+        "options": {
+          "timeout": 60000,
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "N1006",
+      "name": "Gemini News Research",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1580,
+        -200
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 3000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const resp = $input.first().json;\nconst feed = $('Parse News Feed').first().json;\nconst cfg = $('Config').first().json;\n\nif (feed.articleCount === 0) {\n  const msg = [\n    '📰 <b>Berita Crypto: ' + feed.coinName + ' (' + feed.coinSymbol + ')</b>',\n    '',\n    '⚠️ Tidak ditemukan berita terbaru dalam 24-48 jam terakhir untuk koin/topik ini.',\n    'Coba gunakan simbol lain, misalnya: <code>/news sol</code>, <code>/news btc</code>, <code>/news eth</code>',\n  ].join('\\n');\n  return [{ json: { telegramMessage: msg, chatId: feed.chatId, botToken: feed.botToken } }];\n}\n\nlet aiAnalysis = '';\nif (resp.error) {\n  const m = resp.error.message || '';\n  aiAnalysis = m.includes('quota') ? '⏳ AI rate-limited. Coba lagi dalam 1 menit.' : '⚠️ AI error: ' + m.slice(0, 100);\n} else {\n  const parts = resp.candidates?.[0]?.content?.parts || [];\n  aiAnalysis = parts.map(p => p.text || '').join('').trim();\n  if (!aiAnalysis) aiAnalysis = '⚠️ Tidak ada rangkuman dari AI.';\n  aiAnalysis = aiAnalysis\n    .replace(/\\*\\*([^*]+)\\*\\*/g, '<b>$1</b>')\n    .replace(/\\*([^*]+)\\*/g, '$1')\n    .replace(/\\*/g, '');\n}\n\nconst numberIcons = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣', '🔟'];\nconst headlineList = feed.articles.map((a, i) => {\n  const icon = numberIcons[i] || '•';\n  return icon + ' <b>' + a.title + '</b>\\n   🏢 <i>' + a.source + ' • ' + a.timeLabel + '</i>';\n}).join('\\n\\n');\n\nconst actionTips = feed.coinSymbol !== 'MARKET' && feed.coinSymbol !== 'CRYPTO'\n  ? '💡 <i>Ketik <code>/coin ' + feed.coinSymbol.toLowerCase() + '</code> untuk bedah teknikal atau <code>/buy ' + feed.coinSymbol.toLowerCase() + ' 150k</code> untuk entry.</i>\\n'\n  : '💡 <i>Ketik <code>/rec</code> untuk rekomendasi swing entry atau <code>/market</code> untuk top mover.</i>\\n';\n\nconst msg = [\n  '📰 <b>Berita Live & Sentimen: ' + feed.coinName + ' (' + feed.coinSymbol + ')</b>',\n  '<i>' + feed.articleCount + ' artikel Google News terbaru dianalisis secara real-time</i>',\n  '',\n  '🤖 <b>Analisis Sentimen & Katalis AI:</b>',\n  aiAnalysis,\n  '',\n  '🗞️ <b>Headline Berita Terkait:</b>',\n  headlineList,\n  '',\n  actionTips +\n  '⚠️ <i>Decision support only. Bukan saran finansial.</i>',\n].join('\\n');\n\nreturn [{ json: {\n  telegramMessage: msg,\n  chatId: feed.chatId,\n  botToken: feed.botToken,\n} }];"
+      },
+      "id": "N1007",
+      "name": "Format News Report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1820,
+        -200
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $json.botToken || $('Config').first().json.botToken }}/sendMessage",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ chat_id: $json.chatId || $('Config').first().json.telegramChatId, text: $json.telegramMessage, parse_mode: \"HTML\", disable_web_page_preview: true }) }}",
+        "options": {
+          "timeout": 15000,
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "N1008",
+      "name": "Send News Report",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        2060,
+        -200
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
         "rule": {
           "interval": [
             {
@@ -2386,6 +2599,13 @@
         [
           {
             "node": "CoinGecko Rec Markets",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "CoinGecko Search News",
             "type": "main",
             "index": 0
           }
@@ -3087,6 +3307,83 @@
         [
           {
             "node": "Send Rec Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CoinGecko Search News": {
+      "main": [
+        [
+          {
+            "node": "Resolve News Target",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resolve News Target": {
+      "main": [
+        [
+          {
+            "node": "Fetch News Feed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch News Feed": {
+      "main": [
+        [
+          {
+            "node": "Parse News Feed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse News Feed": {
+      "main": [
+        [
+          {
+            "node": "Prepare Gemini News Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Gemini News Prompt": {
+      "main": [
+        [
+          {
+            "node": "Gemini News Research",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini News Research": {
+      "main": [
+        [
+          {
+            "node": "Format News Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format News Report": {
+      "main": [
+        [
+          {
+            "node": "Send News Report",
             "type": "main",
             "index": 0
           }

@@ -235,6 +235,7 @@ if (text.startsWith('/')) {
 if (command === 'signal' || command === 'signals' || command === 'porto') command = 'portfolio';
 if (command === 'recommendation' || command === 'rekomendasi') command = 'rec';
 if (command === 'status') command = 'stat';
+if (command === 'berita' || command === 'kabar') command = 'news';
 
 let coinArg = '', modalArg = 100000;
 if (args) {
@@ -284,6 +285,7 @@ const msg = [
   '',
   '3️⃣ <b>Radar Pasar & Rekomendasi</b>',
   '• <code>/rec</code> — 3 rekomendasi koin pullback sehat untuk swing entry',
+  '• <code>/news &lt;simbol&gt;</code> — Headline berita live & analisis sentimen AI (e.g. <code>/news sol</code>)',
   '• <code>/market</code> — Top 5 gainers & losers 24 jam dalam IDR',
   '',
   '4️⃣ <b>Manajemen Posisi & Portofolio</b>',
@@ -307,6 +309,7 @@ return [{ json: { telegramMessage: msg, chatId: cfg.telegramChatId, botToken: cf
   '',
   '🎯 <b>Riset & Rekomendasi:</b>',
   '• <code>/rec</code> — Rekomendasi 3 koin pullback sehat untuk swing entry',
+  '• <code>/news &lt;simbol&gt;</code> — Headline berita live terhangat & analisis sentimen AI',
   '• <code>/coin &lt;simbol&gt;</code> — Deep analysis: RSI, MACD, Tren, Berita Live, & AI',
   '• <code>/ask &lt;pertanyaan&gt;</code> — Riset bebas Google News Live + Memori obrolan',
   '• <code>/market</code> — Top 5 gainers & losers 24 jam (IDR)',
@@ -1301,6 +1304,216 @@ return [{ json: {
   botToken: cfg.botToken,
 }}];`,
 
+  // ── /news (Live News Headlines & AI Sentiment) ──
+  resolveNewsTarget: String.raw`const data = $input.first().json;
+const update = $('Parse Incoming Message').first().json;
+const rawArgs = (update.args || '').trim();
+const coinArg = (update.coinArg || '').trim();
+
+let coinName = 'Crypto Market Global';
+let coinSymbol = 'MARKET';
+let searchQuery = 'crypto market bitcoin altcoin';
+let isGeneral = false;
+
+if (!rawArgs) {
+  isGeneral = true;
+} else {
+  const coins = data.coins || [];
+  const qLower = coinArg.toLowerCase() || rawArgs.toLowerCase();
+  let coin = coins.find(c => c.symbol?.toLowerCase() === qLower);
+  if (!coin) coin = coins.find(c => c.name?.toLowerCase() === qLower);
+  if (!coin && coins.length > 0) coin = coins[0];
+
+  if (coin) {
+    coinName = coin.name;
+    coinSymbol = coin.symbol.toUpperCase();
+    searchQuery = coin.name + ' crypto';
+  } else {
+    coinName = rawArgs;
+    coinSymbol = rawArgs.toUpperCase();
+    searchQuery = rawArgs + ' crypto';
+  }
+}
+
+const newsQueryUrl = 'https://news.google.com/rss/search?q=' + encodeURIComponent(searchQuery) + '&hl=en&gl=US&ceid=US:en';
+
+return [{ json: {
+  coinName,
+  coinSymbol,
+  searchQuery,
+  isGeneral,
+  newsQueryUrl,
+  chatId: update.chatId,
+  botToken: update.botToken,
+} }];`,
+
+  parseNewsFeed: String.raw`const xml = ($input.first().json.data || '').toString();
+const target = $('Resolve News Target').first().json;
+
+function decodeHtml(str) {
+  return (str || '')
+    .replace(/&amp;/g, '&')
+    .replace(/&#39;/g, "'")
+    .replace(/&quot;/g, '"')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&nbsp;/g, ' ')
+    .trim();
+}
+
+function timeAgo(pubDateStr) {
+  try {
+    const d = new Date(pubDateStr);
+    if (isNaN(d.getTime())) return pubDateStr ? pubDateStr.slice(0, 16) : '';
+    const now = new Date();
+    const diffMs = now.getTime() - d.getTime();
+    const diffSec = Math.floor(diffMs / 1000);
+    if (diffSec < 60) return 'Baru saja';
+    const diffMin = Math.floor(diffSec / 60);
+    if (diffMin < 60) return diffMin + ' mnt lalu';
+    const diffHours = Math.floor(diffMin / 60);
+    if (diffHours < 24) return diffHours + ' jam lalu';
+    const diffDays = Math.floor(diffHours / 24);
+    if (diffDays <= 7) return diffDays + ' hari lalu';
+    return d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' });
+  } catch (e) {
+    return pubDateStr ? pubDateStr.slice(0, 16) : '';
+  }
+}
+
+const itemBlocks = [...xml.matchAll(/<item>([\s\S]*?)<\/item>/g)];
+const articles = [];
+
+for (const m of itemBlocks.slice(0, 12)) {
+  const c = m[1];
+  let rawTitle = (c.match(/<title><!\[CDATA\[([\s\S]*?)\]\]>/) || c.match(/<title>([\s\S]*?)<\/title>/))?.[1] || '';
+  rawTitle = decodeHtml(rawTitle);
+
+  let source = (c.match(/<source[^>]*>([\s\S]*?)<\/source>/))?.[1] || '';
+  source = decodeHtml(source);
+
+  if (rawTitle.includes(' - ')) {
+    const lastDash = rawTitle.lastIndexOf(' - ');
+    if (!source) source = rawTitle.slice(lastDash + 3).trim();
+    rawTitle = rawTitle.slice(0, lastDash).trim();
+  }
+
+  const pubDate = (c.match(/<pubDate>([\s\S]*?)<\/pubDate>/))?.[1] || '';
+  const timeLabel = timeAgo(pubDate);
+
+  if (rawTitle.length > 5) {
+    articles.push({
+      title: rawTitle,
+      source: source || 'Media Crypto',
+      pubDate,
+      timeLabel,
+    });
+  }
+  if (articles.length >= 7) break;
+}
+
+return [{ json: {
+  ...target,
+  articles,
+  articleCount: articles.length,
+} }];`,
+
+  prepareGeminiNewsPrompt: String.raw`const feed = $('Parse News Feed').first().json;
+const cfg = $('Config').first().json;
+
+let prompt = '';
+if (feed.articleCount === 0) {
+  prompt = 'Analisis kondisi sentimen pasar crypto terkini untuk ' + feed.coinName + ' (' + feed.coinSymbol + '). Berikan ringkasan sentimen, risiko makro, dan arahan untuk swing trader.';
+} else {
+  const newsListText = feed.articles.map((a, i) => (i + 1) + '. ' + a.title + ' [' + a.source + ' - ' + a.timeLabel + ']').join('\n');
+  prompt = [
+    'Kamu adalah analis sentimen dan intelijen berita crypto profesional untuk swing trader Indonesia.',
+    'Analisis berita live terbaru berikut untuk: ' + feed.coinName + ' (' + feed.coinSymbol + ').',
+    '',
+    'DAFTAR BERITA LIVE TERBARU:',
+    newsListText,
+    '',
+    'INSTRUKSI ANALISIS (JAWAB DALAM BAHASA INDONESIA, SINGKAT & PADAT):',
+    '1. KESIMPULAN SENTIMEN: Tentukan sentimen pasar (BULLISH / BEARISH / NETRAL) dan berikan Skor Sentimen (1 sampai 10).',
+    '2. KATALIS UTAMA: Rangkum 2-3 poin berita paling berdampak atau narasi pasar utama (apa yang sebenarnya terjadi di balik berita).',
+    '3. DAMPAK KE SWING TRADING: Jelaskan apakah berita ini mendukung aksi beli/re-entry, pertanda potensi koreksi (sell the news), atau sekadar rumor/volatilitas jangka pendek.',
+    '',
+    'ATURAN FORMAT:',
+    '- JANGAN gunakan tanda bintang ganda tebal (**), gunakan penomoran atau bullet bersih.',
+    '- Maksimal 150 kata total agar pas dibaca cepat di Telegram mobile.',
+  ].join('\n');
+}
+
+const geminiBody = {
+  contents: [{ parts: [{ text: prompt }] }],
+  generationConfig: { maxOutputTokens: 1000, temperature: 0.2, thinkingConfig: { thinkingBudget: 512 } },
+};
+
+return [{ json: {
+  ...feed,
+  geminiBody,
+  chatId: feed.chatId,
+  botToken: feed.botToken,
+} }];`,
+
+  formatNewsReport: String.raw`const resp = $input.first().json;
+const feed = $('Parse News Feed').first().json;
+const cfg = $('Config').first().json;
+
+if (feed.articleCount === 0) {
+  const msg = [
+    '📰 <b>Berita Crypto: ' + feed.coinName + ' (' + feed.coinSymbol + ')</b>',
+    '',
+    '⚠️ Tidak ditemukan berita terbaru dalam 24-48 jam terakhir untuk koin/topik ini.',
+    'Coba gunakan simbol lain, misalnya: <code>/news sol</code>, <code>/news btc</code>, <code>/news eth</code>',
+  ].join('\n');
+  return [{ json: { telegramMessage: msg, chatId: feed.chatId, botToken: feed.botToken } }];
+}
+
+let aiAnalysis = '';
+if (resp.error) {
+  const m = resp.error.message || '';
+  aiAnalysis = m.includes('quota') ? '⏳ AI rate-limited. Coba lagi dalam 1 menit.' : '⚠️ AI error: ' + m.slice(0, 100);
+} else {
+  const parts = resp.candidates?.[0]?.content?.parts || [];
+  aiAnalysis = parts.map(p => p.text || '').join('').trim();
+  if (!aiAnalysis) aiAnalysis = '⚠️ Tidak ada rangkuman dari AI.';
+  aiAnalysis = aiAnalysis
+    .replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>')
+    .replace(/\*([^*]+)\*/g, '$1')
+    .replace(/\*/g, '');
+}
+
+const numberIcons = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣', '🔟'];
+const headlineList = feed.articles.map((a, i) => {
+  const icon = numberIcons[i] || '•';
+  return icon + ' <b>' + a.title + '</b>\n   🏢 <i>' + a.source + ' • ' + a.timeLabel + '</i>';
+}).join('\n\n');
+
+const actionTips = feed.coinSymbol !== 'MARKET' && feed.coinSymbol !== 'CRYPTO'
+  ? '💡 <i>Ketik <code>/coin ' + feed.coinSymbol.toLowerCase() + '</code> untuk bedah teknikal atau <code>/buy ' + feed.coinSymbol.toLowerCase() + ' 150k</code> untuk entry.</i>\n'
+  : '💡 <i>Ketik <code>/rec</code> untuk rekomendasi swing entry atau <code>/market</code> untuk top mover.</i>\n';
+
+const msg = [
+  '📰 <b>Berita Live & Sentimen: ' + feed.coinName + ' (' + feed.coinSymbol + ')</b>',
+  '<i>' + feed.articleCount + ' artikel Google News terbaru dianalisis secara real-time</i>',
+  '',
+  '🤖 <b>Analisis Sentimen & Katalis AI:</b>',
+  aiAnalysis,
+  '',
+  '🗞️ <b>Headline Berita Terkait:</b>',
+  headlineList,
+  '',
+  actionTips +
+  '⚠️ <i>Decision support only. Bukan saran finansial.</i>',
+].join('\n');
+
+return [{ json: {
+  telegramMessage: msg,
+  chatId: feed.chatId,
+  botToken: feed.botToken,
+} }];`,
+
   unknownCmd: String.raw`const update = $('Parse Incoming Message').first().json;
 const cfg = $('Config').first().json;
 const msg = '❓ Perintah <b>/' + update.command + '</b> tidak dikenal.\n\nKetik <code>/start</code> untuk panduan lengkap atau <code>/help</code> untuk daftar perintah.';
@@ -1460,6 +1673,7 @@ const nodes = [
           { conditions: { conditions: [{ leftValue: '={{ $json.command }}', rightValue: 'sell', operator: { type: 'string', operation: 'equals' } }], combinator: 'and' }, renameOutput: true, outputKey: 'sell' },
           { conditions: { conditions: [{ leftValue: '={{ $json.command }}', rightValue: 'stat', operator: { type: 'string', operation: 'equals' } }], combinator: 'and' }, renameOutput: true, outputKey: 'stat' },
           { conditions: { conditions: [{ leftValue: '={{ $json.command }}', rightValue: 'rec', operator: { type: 'string', operation: 'equals' } }], combinator: 'and' }, renameOutput: true, outputKey: 'rec' },
+          { conditions: { conditions: [{ leftValue: '={{ $json.command }}', rightValue: 'news', operator: { type: 'string', operation: 'equals' } }], combinator: 'and' }, renameOutput: true, outputKey: 'news' },
         ],
       },
       fallbackOutput: 'extra',
@@ -1607,6 +1821,18 @@ const nodes = [
   codeNode('B8302', 'Format Rec Message', code.formatRecMessage, 620, 1950),
   tgSend('B8303', 'Send Rec Message', 860, 1950),
 
+  // /news — Live Headlines & AI Sentiment
+  httpGet('N1001', 'CoinGecko Search News',
+    "=https://api.coingecko.com/api/v3/search?query={{ encodeURIComponent($('Parse Incoming Message').first().json.coinArg || $('Parse Incoming Message').first().json.args || 'bitcoin') }}",
+    380, -200, { onError: 'continueRegularOutput' }),
+  codeNode('N1002', 'Resolve News Target', code.resolveNewsTarget, 620, -200),
+  httpGetText('N1003', 'Fetch News Feed', "={{ $json.newsQueryUrl }}", 860, -200),
+  codeNode('N1004', 'Parse News Feed', code.parseNewsFeed, 1100, -200),
+  codeNode('N1005', 'Prepare Gemini News Prompt', code.prepareGeminiNewsPrompt, 1340, -200),
+  httpPost('N1006', 'Gemini News Research', GEMINI_URL, '={{ JSON.stringify($json.geminiBody) }}', 1580, -200, 60000),
+  codeNode('N1007', 'Format News Report', code.formatNewsReport, 1820, -200),
+  tgSend('N1008', 'Send News Report', 2060, -200),
+
   // Cron Alert (Runs every 2 hours in background)
   scheduleTrigger('C1001', 'Cron Every 2h', '0 */2 * * *', -1000, 2250),
   codeNode('C1002', 'Config Cron', code.config, -700, 2250, 'Config untuk cron execution'),
@@ -1633,7 +1859,8 @@ const connections = {
     [{ node: 'Prepare Sell Query', type: 'main', index: 0 }],       // 8: sell
     [{ node: 'Prepare Stat Query', type: 'main', index: 0 }],       // 9: stat
     [{ node: 'CoinGecko Rec Markets', type: 'main', index: 0 }],    // 10: rec
-    [{ node: 'Unknown Command', type: 'main', index: 0 }],          // 11: fallback
+    [{ node: 'CoinGecko Search News', type: 'main', index: 0 }],    // 11: news
+    [{ node: 'Unknown Command', type: 'main', index: 0 }],          // 12: fallback
   ] },
 
   // /start
@@ -1742,6 +1969,15 @@ const connections = {
   // /rec
   'CoinGecko Rec Markets':    { main: [[{ node: 'Format Rec Message', type: 'main', index: 0 }]] },
   'Format Rec Message':       { main: [[{ node: 'Send Rec Message', type: 'main', index: 0 }]] },
+
+  // /news
+  'CoinGecko Search News':    { main: [[{ node: 'Resolve News Target', type: 'main', index: 0 }]] },
+  'Resolve News Target':      { main: [[{ node: 'Fetch News Feed', type: 'main', index: 0 }]] },
+  'Fetch News Feed':          { main: [[{ node: 'Parse News Feed', type: 'main', index: 0 }]] },
+  'Parse News Feed':          { main: [[{ node: 'Prepare Gemini News Prompt', type: 'main', index: 0 }]] },
+  'Prepare Gemini News Prompt': { main: [[{ node: 'Gemini News Research', type: 'main', index: 0 }]] },
+  'Gemini News Research':     { main: [[{ node: 'Format News Report', type: 'main', index: 0 }]] },
+  'Format News Report':       { main: [[{ node: 'Send News Report', type: 'main', index: 0 }]] },
 
   // Cron Alert
   'Cron Every 2h':            { main: [[{ node: 'Config Cron', type: 'main', index: 0 }]] },
