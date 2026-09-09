@@ -1,0 +1,16 @@
+# Kredensial — jangan pernah di-commit
+.env
+
+# Data n8n lokal & internal logs (workflow tersimpan di repo)
+docker/n8n-data/*
+!docker/n8n-data/manage_positions.mjs
+!docker/n8n-data/midas-bot.n8n.json
+
+# SQLite database files
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+*.db
+
+# Logs & temp files
+*.log
