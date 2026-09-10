@@ -19,6 +19,8 @@ services:
       EXECUTIONS_DATA_SAVE_ON_ERROR: all
       EXECUTIONS_DATA_SAVE_ON_SUCCESS: all
       EXECUTIONS_DATA_SAVE_MANUAL_EXECUTIONS: "true"
+      N8N_BLOCK_ENV_ACCESS_IN_NODE: "false"
+      GEMINI_API_KEY: "${GEMINI_API_KEY}"
     volumes:
       - ./docker/n8n-data:/home/node/.n8n
     extra_hosts:
