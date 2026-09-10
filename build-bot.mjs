@@ -205,7 +205,7 @@ const code = {
     ollamaBaseUrl: 'http://host.docker.internal:11434',
     ollamaModel: 'qwen3.5:2b',
     sqlitePath: '/home/node/.n8n/crypto_decision_support.sqlite',
-    geminiApiKey: 'AQ.Ab8RN6Jvs4yGhGg8RsBHTIvEhaF88qWdX7pXWoH5b--AspiBsw',
+    geminiApiKey: 'YOUR_GEMINI_API_KEY',
     geminiModel: 'gemini-3.5-flash-lite',
     quoteCurrency: 'idr',
     marketDays: 60,
@@ -1947,7 +1947,7 @@ function scheduleTrigger(id, name, expression, x, y) {
   };
 }
 
-const GEMINI_URL = "={{ 'https://generativelanguage.googleapis.com/v1beta/models/' + $('Config').first().json.geminiModel + ':generateContent?key=' + $('Config').first().json.geminiApiKey }}";
+const GEMINI_URL = "={{ 'https://generativelanguage.googleapis.com/v1beta/models/' + $('Config').first().json.geminiModel + ':generateContent?key=' + ($env.GEMINI_API_KEY || $('Config').first().json.geminiApiKey) }}";
 
 const nodes = [
   // ── 1. Webhook Entrypoint (REALTIME 0 DELAY) ──

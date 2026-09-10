@@ -21,7 +21,7 @@
     },
     {
       "parameters": {
-        "jsCode": "return [{\n  json: {\n    timezone: 'Asia/Jakarta',\n    telegramChatId: '1536791393',\n    botToken: '8739615976:AAHKY58pJU_-zniOHvRz93-7H-9neg3TL-Y',\n    ollamaBaseUrl: 'http://host.docker.internal:11434',\n    ollamaModel: 'qwen3.5:2b',\n    sqlitePath: '/home/node/.n8n/crypto_decision_support.sqlite',\n    geminiApiKey: 'AQ.Ab8RN6Jvs4yGhGg8RsBHTIvEhaF88qWdX7pXWoH5b--AspiBsw',\n    geminiModel: 'gemini-3.5-flash-lite',\n    quoteCurrency: 'idr',\n    marketDays: 60,\n    technicalWeights: { rsi: 0.25, macd: 0.30, bollinger: 0.25, volatility: 0.10, trend: 0.10 },\n    decisionWeights: { sentiment: 0.40, technical: 0.60 },\n    thresholds: { buy: 0.20, sell: -0.20 },\n  },\n}];"
+        "jsCode": "return [{\n  json: {\n    timezone: 'Asia/Jakarta',\n    telegramChatId: '1536791393',\n    botToken: '8739615976:AAHKY58pJU_-zniOHvRz93-7H-9neg3TL-Y',\n    ollamaBaseUrl: 'http://host.docker.internal:11434',\n    ollamaModel: 'qwen3.5:2b',\n    sqlitePath: '/home/node/.n8n/crypto_decision_support.sqlite',\n    geminiApiKey: 'YOUR_GEMINI_API_KEY',\n    geminiModel: 'gemini-3.5-flash-lite',\n    quoteCurrency: 'idr',\n    marketDays: 60,\n    technicalWeights: { rsi: 0.25, macd: 0.30, bollinger: 0.25, volatility: 0.10, trend: 0.10 },\n    decisionWeights: { sentiment: 0.40, technical: 0.60 },\n    thresholds: { buy: 0.20, sell: -0.20 },\n  },\n}];"
       },
       "id": "W0002",
       "name": "Config",
@@ -709,7 +709,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "={{ 'https://generativelanguage.googleapis.com/v1beta/models/' + $('Config').first().json.geminiModel + ':generateContent?key=' + $('Config').first().json.geminiApiKey }}",
+        "url": "={{ 'https://generativelanguage.googleapis.com/v1beta/models/' + $('Config').first().json.geminiModel + ':generateContent?key=' + ($env.GEMINI_API_KEY || $('Config').first().json.geminiApiKey) }}",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -918,7 +918,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "={{ 'https://generativelanguage.googleapis.com/v1beta/models/' + $('Config').first().json.geminiModel + ':generateContent?key=' + $('Config').first().json.geminiApiKey }}",
+        "url": "={{ 'https://generativelanguage.googleapis.com/v1beta/models/' + $('Config').first().json.geminiModel + ':generateContent?key=' + ($env.GEMINI_API_KEY || $('Config').first().json.geminiApiKey) }}",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -2274,7 +2274,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "={{ 'https://generativelanguage.googleapis.com/v1beta/models/' + $('Config').first().json.geminiModel + ':generateContent?key=' + $('Config').first().json.geminiApiKey }}",
+        "url": "={{ 'https://generativelanguage.googleapis.com/v1beta/models/' + $('Config').first().json.geminiModel + ':generateContent?key=' + ($env.GEMINI_API_KEY || $('Config').first().json.geminiApiKey) }}",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -2618,7 +2618,7 @@
     },
     {
       "parameters": {
-        "jsCode": "return [{\n  json: {\n    timezone: 'Asia/Jakarta',\n    telegramChatId: '1536791393',\n    botToken: '8739615976:AAHKY58pJU_-zniOHvRz93-7H-9neg3TL-Y',\n    ollamaBaseUrl: 'http://host.docker.internal:11434',\n    ollamaModel: 'qwen3.5:2b',\n    sqlitePath: '/home/node/.n8n/crypto_decision_support.sqlite',\n    geminiApiKey: 'AQ.Ab8RN6Jvs4yGhGg8RsBHTIvEhaF88qWdX7pXWoH5b--AspiBsw',\n    geminiModel: 'gemini-3.5-flash-lite',\n    quoteCurrency: 'idr',\n    marketDays: 60,\n    technicalWeights: { rsi: 0.25, macd: 0.30, bollinger: 0.25, volatility: 0.10, trend: 0.10 },\n    decisionWeights: { sentiment: 0.40, technical: 0.60 },\n    thresholds: { buy: 0.20, sell: -0.20 },\n  },\n}];"
+        "jsCode": "return [{\n  json: {\n    timezone: 'Asia/Jakarta',\n    telegramChatId: '1536791393',\n    botToken: '8739615976:AAHKY58pJU_-zniOHvRz93-7H-9neg3TL-Y',\n    ollamaBaseUrl: 'http://host.docker.internal:11434',\n    ollamaModel: 'qwen3.5:2b',\n    sqlitePath: '/home/node/.n8n/crypto_decision_support.sqlite',\n    geminiApiKey: 'YOUR_GEMINI_API_KEY',\n    geminiModel: 'gemini-3.5-flash-lite',\n    quoteCurrency: 'idr',\n    marketDays: 60,\n    technicalWeights: { rsi: 0.25, macd: 0.30, bollinger: 0.25, volatility: 0.10, trend: 0.10 },\n    decisionWeights: { sentiment: 0.40, technical: 0.60 },\n    thresholds: { buy: 0.20, sell: -0.20 },\n  },\n}];"
       },
       "id": "C1002",
       "name": "Config Cron",
