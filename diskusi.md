@@ -1,3 +1,7 @@
+# Catatan Diskusi Strategi
+
+> Status 2026-09-11: dokumen ini adalah catatan evaluasi historis untuk jalur crypto spot. MTF, ATR, dynamic TP/SL, transaksi posisi atomik, serta pemisahan kalkulasi deterministik dari narasi AI sudah diterapkan. Analisis saham dan futures sekarang didokumentasikan di `README.md` dan `Calculations.md`; eksekusi posisi tetap khusus crypto spot, sedangkan `/futures` analysis-only.
+
 Secara konseptual, logika hibrida (trend-following + pullback entry) yang kamu susun sudah berada di jalur yang tepat untuk swing trading. Di meja trading kuantitatif maupun diskresioner, strategi ini lazim disebut trend-continuation setup. Logika ini memecahkan dilema klasik: menghindari beli di pucuk (chasing momentum) sekaligus tidak terjebak menunggu kondisi oversold ekstrem yang jarang terjadi saat aset sedang rally kuat.
 
 Namun, sebelum kamu memprogram logika ini ke dalam bot, ada beberapa catatan teknis, lubang risiko, dan celah logika yang wajib dievaluasi agar bot tidak mengalami drawdown parah saat kondisi pasar berubah.

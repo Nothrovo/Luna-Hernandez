@@ -21,6 +21,9 @@ services:
       EXECUTIONS_DATA_SAVE_MANUAL_EXECUTIONS: "true"
       N8N_BLOCK_ENV_ACCESS_IN_NODE: "false"
       GEMINI_API_KEY: "${GEMINI_API_KEY}"
+      ALPACA_API_KEY_ID: "${ALPACA_API_KEY_ID:-}"
+      ALPACA_API_SECRET: "${ALPACA_API_SECRET:-}"
+      SEC_USER_AGENT: "${SEC_USER_AGENT:-Midas-Luna contact@example.com}"
     volumes:
       - ./docker/n8n-data:/home/node/.n8n
     extra_hosts:

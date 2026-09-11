@@ -1,0 +1,167 @@
+{
+  "schemaVersion": "ecc.install.v1",
+  "installedAt": "2026-09-11T04:50:31.212Z",
+  "target": {
+    "id": "gemini-project",
+    "target": "gemini",
+    "kind": "project",
+    "root": "/home/nothrovo/Projects/Midas/.gemini",
+    "installStatePath": "/home/nothrovo/Projects/Midas/.gemini/ecc-install-state.json"
+  },
+  "request": {
+    "profile": "minimal",
+    "modules": [],
+    "includeComponents": [
+      "skill:api-connector-builder",
+      "skill:backend-patterns",
+      "skill:tdd-workflow",
+      "skill:ai-regression-testing",
+      "skill:verification-loop",
+      "skill:error-handling",
+      "skill:database-migrations",
+      "skill:cost-aware-llm-pipeline",
+      "skill:eval-harness",
+      "skill:agent-architecture-audit",
+      "skill:loop-design-check"
+    ],
+    "excludeComponents": [],
+    "legacyLanguages": [],
+    "legacyMode": false
+  },
+  "resolution": {
+    "selectedModules": [
+      "platform-configs",
+      "skill-agent-architecture-audit",
+      "skill-ai-regression-testing",
+      "skill-api-connector-builder",
+      "skill-cost-aware-llm-pipeline",
+      "skill-database-migrations",
+      "skill-error-handling",
+      "skill-loop-design-check"
+    ],
+    "skippedModules": [
+      "rules-core",
+      "agents-core",
+      "commands-core",
+      "framework-language",
+      "workflow-quality"
+    ]
+  },
+  "source": {
+    "repoVersion": "2.1.0",
+    "repoCommit": "e4e4163101f162881e628f300a9ca4e6a940bcea",
+    "manifestVersion": 1
+  },
+  "operations": [
+    {
+      "kind": "copy-file",
+      "moduleId": "platform-configs",
+      "sourcePath": "/home/nothrovo/ECC/.gemini/GEMINI.md",
+      "sourceRelativePath": ".gemini/GEMINI.md",
+      "destinationPath": "/home/nothrovo/Projects/Midas/.gemini/GEMINI.md",
+      "strategy": "sync-root-children",
+      "ownership": "managed",
+      "scaffoldOnly": false
+    },
+    {
+      "kind": "copy-file",
+      "moduleId": "platform-configs",
+      "sourcePath": "/home/nothrovo/ECC/mcp-configs/mcp-servers.json",
+      "sourceRelativePath": "mcp-configs/mcp-servers.json",
+      "destinationPath": "/home/nothrovo/Projects/Midas/.gemini/mcp-configs/mcp-servers.json",
+      "strategy": "preserve-relative-path",
+      "ownership": "managed",
+      "scaffoldOnly": false
+    },
+    {
+      "kind": "copy-file",
+      "moduleId": "platform-configs",
+      "sourcePath": "/home/nothrovo/ECC/scripts/auto-update.js",
+      "sourceRelativePath": "scripts/auto-update.js",
+      "destinationPath": "/home/nothrovo/Projects/Midas/.gemini/scripts/auto-update.js",
+      "strategy": "preserve-relative-path",
+      "ownership": "managed",
+      "scaffoldOnly": false
+    },
+    {
+      "kind": "copy-file",
+      "moduleId": "platform-configs",
+      "sourcePath": "/home/nothrovo/ECC/scripts/setup-package-manager.js",
+      "sourceRelativePath": "scripts/setup-package-manager.js",
+      "destinationPath": "/home/nothrovo/Projects/Midas/.gemini/scripts/setup-package-manager.js",
+      "strategy": "preserve-relative-path",
+      "ownership": "managed",
+      "scaffoldOnly": false
+    },
+    {
+      "kind": "copy-file",
+      "moduleId": "skill-agent-architecture-audit",
+      "sourcePath": "/home/nothrovo/ECC/skills/agent-architecture-audit/SKILL.md",
+      "sourceRelativePath": "skills/agent-architecture-audit/SKILL.md",
+      "destinationPath": "/home/nothrovo/Projects/Midas/.gemini/skills/agent-architecture-audit/SKILL.md",
+      "strategy": "preserve-relative-path",
+      "ownership": "managed",
+      "scaffoldOnly": false
+    },
+    {
+      "kind": "copy-file",
+      "moduleId": "skill-ai-regression-testing",
+      "sourcePath": "/home/nothrovo/ECC/skills/ai-regression-testing/SKILL.md",
+      "sourceRelativePath": "skills/ai-regression-testing/SKILL.md",
+      "destinationPath": "/home/nothrovo/Projects/Midas/.gemini/skills/ai-regression-testing/SKILL.md",
+      "strategy": "preserve-relative-path",
+      "ownership": "managed",
+      "scaffoldOnly": false
+    },
+    {
+      "kind": "copy-file",
+      "moduleId": "skill-api-connector-builder",
+      "sourcePath": "/home/nothrovo/ECC/skills/api-connector-builder/SKILL.md",
+      "sourceRelativePath": "skills/api-connector-builder/SKILL.md",
+      "destinationPath": "/home/nothrovo/Projects/Midas/.gemini/skills/api-connector-builder/SKILL.md",
+      "strategy": "preserve-relative-path",
+      "ownership": "managed",
+      "scaffoldOnly": false
+    },
+    {
+      "kind": "copy-file",
+      "moduleId": "skill-cost-aware-llm-pipeline",
+      "sourcePath": "/home/nothrovo/ECC/skills/cost-aware-llm-pipeline/SKILL.md",
+      "sourceRelativePath": "skills/cost-aware-llm-pipeline/SKILL.md",
+      "destinationPath": "/home/nothrovo/Projects/Midas/.gemini/skills/cost-aware-llm-pipeline/SKILL.md",
+      "strategy": "preserve-relative-path",
+      "ownership": "managed",
+      "scaffoldOnly": false
+    },
+    {
+      "kind": "copy-file",
+      "moduleId": "skill-database-migrations",
+      "sourcePath": "/home/nothrovo/ECC/skills/database-migrations/SKILL.md",
+      "sourceRelativePath": "skills/database-migrations/SKILL.md",
+      "destinationPath": "/home/nothrovo/Projects/Midas/.gemini/skills/database-migrations/SKILL.md",
+      "strategy": "preserve-relative-path",
+      "ownership": "managed",
+      "scaffoldOnly": false
+    },
+    {
+      "kind": "copy-file",
+      "moduleId": "skill-error-handling",
+      "sourcePath": "/home/nothrovo/ECC/skills/error-handling/SKILL.md",
+      "sourceRelativePath": "skills/error-handling/SKILL.md",
+      "destinationPath": "/home/nothrovo/Projects/Midas/.gemini/skills/error-handling/SKILL.md",
+      "strategy": "preserve-relative-path",
+      "ownership": "managed",
+      "scaffoldOnly": false
+    },
+    {
+      "kind": "copy-file",
+      "moduleId": "skill-loop-design-check",
+      "sourcePath": "/home/nothrovo/ECC/skills/loop-design-check/SKILL.md",
+      "sourceRelativePath": "skills/loop-design-check/SKILL.md",
+      "destinationPath": "/home/nothrovo/Projects/Midas/.gemini/skills/loop-design-check/SKILL.md",
+      "strategy": "preserve-relative-path",
+      "ownership": "managed",
+      "scaffoldOnly": false
+    }
+  ]
+}

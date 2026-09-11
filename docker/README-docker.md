@@ -1,71 +1,91 @@
 # Setup Docker Lokal — Midas n8n
 
-## Struktur
+## Struktur runtime
 
-```
+```text
 Midas/
-├── docker-compose.yml        ← definisi service n8n
-├── .env                      ← encryption key (jangan commit!)
-├── .env.example              ← template .env
-├── .gitignore
-├── Makefile                  ← shortcut perintah
-├── docker/
-│   ├── Dockerfile            ← n8n + sqlite3
-│   └── n8n-data/             ← data persisten n8n (workflow, DB)
-└── crypto-decision-support-btc-eth.n8n.json  ← workflow untuk diimport
+├── build-bot.mjs                    generator workflow
+├── lib/
+│   ├── market-analysis.mjs          kalkulator multi-market deterministik
+│   └── market-providers.mjs         adapter Alpaca, SEC, Binance, dan News
+├── midas-bot.n8n.json               workflow hasil generate
+├── docker-compose.yml
+└── docker/n8n-data/
+    ├── midas-bot.n8n.json           salinan workflow untuk container
+    ├── manage_positions.mjs         posisi crypto spot
+    ├── market_analysis_cli.mjs      CLI saham/futures/history/cache
+    ├── market-analysis.mjs          salinan runtime hasil generate
+    └── market-providers.mjs         salinan runtime hasil generate
 ```
 
-## Perintah Cepat
+`midas-bot.n8n.json` dan dua modul market di `docker/n8n-data` adalah artifact hasil `npm run build`. Edit sumber di `build-bot.mjs` atau `lib/`, bukan salinan hasil generate.
 
-| Perintah | Aksi |
-|----------|------|
-| `make up` | Jalankan n8n |
-| `make down` | Hentikan n8n |
-| `make logs` | Lihat log real-time |
-| `make db` | Baca tabel sinyal SQLite |
-| `make shell` | Masuk shell container |
-| `make build` | Rebuild image |
-
-## Langkah Pertama Kali
+## Konfigurasi
 
 ```bash
-# 1. Build image (hanya sekali atau setelah update)
-make build
-
-# 2. Jalankan
-make up
-
-# 3. Buka browser
-# http://localhost:5678
-
-# 4. Import workflow:
-#    Settings → Import Workflow → pilih crypto-decision-support-btc-eth.n8n.json
-
-# 5. Isi Config node:
-#    - telegramChatId: ID chat Telegram kamu
-#    - ollamaBaseUrl: http://host.docker.internal:11434  (sudah default)
-#    - ollamaModel: qwen3.5:2b  (sudah default)
-
-# 6. Isi credential Telegram di node "Send Telegram Signal"
-
-# 7. Activate workflow (toggle kanan atas)
+cp .env.example .env
 ```
 
-## Cek Database SQLite
+Isi variabel berikut:
+
+| Variabel | Dipakai untuk | Wajib |
+|---|---|---|
+| `N8N_ENCRYPTION_KEY` | Enkripsi credential n8n | Ya |
+| `GEMINI_API_KEY` | Narasi berita/risiko | Ya untuk fitur AI |
+| `ALPACA_API_KEY_ID` | Candle saham IEX | Ya untuk `/stock` |
+| `ALPACA_API_SECRET` | Candle saham IEX | Ya untuk `/stock` |
+| `SEC_USER_AGENT` | Identitas akses SEC, contoh aplikasi + email | Ya untuk akses SEC yang benar |
+
+`/futures` hanya memakai endpoint market-data publik Binance USD-M dan tidak membutuhkan API key Binance. Tidak ada jalur order futures.
+
+## Build, test, dan jalankan
 
 ```bash
-# Lewat Makefile
-make db
+# Generate artifact dan jalankan seluruh regression test
+npm test
 
-# Atau langsung sqlite3 di host (lokasi file di dalam volume)
-sqlite3 ./docker/n8n-data/crypto_decision_support.sqlite \
-  'SELECT * FROM signal_harian ORDER BY tanggal DESC;'
+# Build image dan mulai service
+docker compose build
+docker compose up -d
+
+# Import dan publish workflow hasil generate
+docker compose exec -T n8n n8n import:workflow --input=/home/node/.n8n/midas-bot.n8n.json
+docker compose exec -T n8n n8n publish:workflow --id=RzqHFpZWsPL7CsM1
+docker compose restart n8n
 ```
 
-## Update n8n
+n8n tersedia di `http://localhost:5678`. Workflow bernama **Luna Hernandez — Multi-Market Decision Support**.
+
+## Smoke test dari container
 
 ```bash
-docker compose pull   # tidak berlaku karena pakai build
-make build            # rebuild dengan versi n8n terbaru
-make down && make up
+docker compose exec -T n8n node /home/node/.n8n/market_analysis_cli.mjs stock AAPL
+docker compose exec -T n8n node /home/node/.n8n/market_analysis_cli.mjs futures BTCUSDT
+docker compose exec -T n8n node /home/node/.n8n/market_analysis_cli.mjs history
+docker compose exec -T n8n node /home/node/.n8n/manage_positions.mjs list-active
+docker compose exec -T n8n node /home/node/.n8n/manage_positions.mjs check-alerts
 ```
+
+Setiap CLI market mengeluarkan tepat satu objek JSON. Respons gagal juga berbentuk JSON dengan `error.code`, `message`, dan `retryable`, sehingga workflow dapat memilih pesan error tanpa menebak isi `stderr`.
+
+## SQLite
+
+Database default berada di `docker/n8n-data/crypto_decision_support.sqlite` dan memuat tabel legacy posisi/analisis crypto serta tabel baru:
+
+- `market_analysis_sessions`: histori kanonikal saham dan futures.
+- `market_data_cache`: cache provider berbasis TTL.
+- `position_transactions`: audit ledger transaksi posisi crypto.
+
+Perintah `/history [simbol]` menggabungkan `coin_sessions` dan `market_analysis_sessions`, kemudian mengurutkan hasil terbaru.
+
+## Update workflow
+
+```bash
+npm test
+docker compose build
+docker compose up -d
+docker compose exec -T n8n n8n import:workflow --input=/home/node/.n8n/midas-bot.n8n.json
+docker compose exec -T n8n n8n publish:workflow --id=RzqHFpZWsPL7CsM1
+```
+
+Jangan mengedit workflow JSON langsung karena perubahan akan ditimpa build berikutnya.
