@@ -44,8 +44,8 @@ function rsiWilder(vals, period = 14) {
   return al === 0 ? 100 : 100 - 100 / (1 + ag / al);
 }
 function macdCalc(vals) {
-  const n = vals.length;
-  const slow = Math.min(26, Math.floor(n * 0.4)), fast = Math.min(12, Math.floor(slow * 0.46)), sig = Math.min(9, Math.floor(fast * 0.75));
+  const fast = 12, slow = 26, sig = 9;
+  if (vals.length < slow + sig) return { line: 0, signal: 0, histogram: 0 };
   const fe = ema(vals, fast), se = ema(vals, slow);
   const line = vals.map((_, i) => fe[i] != null && se[i] != null ? fe[i] - se[i] : null).filter(v => v != null);
   if (line.length < sig) return { line: 0, signal: 0, histogram: 0 };
@@ -226,7 +226,6 @@ const code = {
     quoteCurrency: 'idr',
     marketDays: 90,
     technicalWeights: { rsi: 0.25, macd: 0.30, bollinger: 0.25, volatility: 0.10, trend: 0.10 },
-    decisionWeights: { sentiment: 0.40, technical: 0.60 },
     thresholds: { buy: 0.20, sell: -0.20 },
   },
 }];`,
@@ -268,7 +267,7 @@ if (command === 'status') command = 'stat';
 if (command === 'berita' || command === 'kabar') command = 'news';
 if (command === 'risk' || command === 'resiko') command = 'risk';
 
-let coinArg = '', modalArg = 100000, porsiArg = '100%';
+let coinArg = '', modalArg = 100000, porsiArg = '100%', invalidModal = null;
 if (args) {
   const parts = args.split(/\s+/);
   coinArg = parts[0] ? parts[0].trim().toUpperCase() : '';
@@ -278,7 +277,11 @@ if (args) {
     if (m.endsWith('k')) m = parseFloat(m) * 1000;
     else if (m.endsWith('jt') || m.endsWith('m') || m.endsWith('juta')) m = parseFloat(m) * 1000000;
     else m = parseFloat(m);
-    if (Number.isFinite(m) && m > 0) modalArg = m;
+    if (Number.isFinite(m) && m > 0) {
+      modalArg = m;
+    } else {
+      invalidModal = parts[1].trim();
+    }
   }
 }
 
@@ -288,6 +291,7 @@ return [{ json: {
   coinArg,
   modalArg,
   porsiArg,
+  invalidModal,
   from: (msg.from && msg.from.first_name) || 'Trader',
   chatId: senderChatId,
   hasCommand: command !== '__none__',
@@ -411,15 +415,23 @@ return [{ json: { ...coinCtx, ...techResult, asset: coinCtx.coinSymbol, btcGate 
 
   parseNews: String.raw`const xml = ($input.first().json.data || '').toString();
 const itemBlocks = [...xml.matchAll(/<item>([\s\S]*?)<\/item>/g)];
-const articles = itemBlocks.slice(0, 10).map(m => {
+const now = Date.now();
+const parsed = itemBlocks.map(m => {
   const c = m[1];
   const title = (c.match(/<title><!\[CDATA\[([\s\S]*?)\]\]>/) || c.match(/<title>([\s\S]*?)<\/title>/))?.[1] || '';
-  const pubDate = c.match(/<pubDate>([\s\S]*?)<\/pubDate>/)?.[1] || '';
+  const pubDateStr = c.match(/<pubDate>([\s\S]*?)<\/pubDate>/)?.[1] || '';
+  const ts = pubDateStr ? new Date(pubDateStr).getTime() : 0;
   return {
     title: title.replace(/&amp;/g,'&').replace(/&#39;/g,"'").replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"').trim(),
-    pubDate: pubDate.slice(0, 16),
+    pubDate: pubDateStr.slice(0, 16),
+    ts: Number.isFinite(ts) ? ts : 0,
   };
 }).filter(a => a.title.length > 5);
+
+// Prioritaskan artikel terbaru (< 48 jam jika tersedia)
+const recent = parsed.filter(a => a.ts > 0 && (now - a.ts) <= 48 * 3600 * 1000);
+const older = parsed.filter(a => !(a.ts > 0 && (now - a.ts) <= 48 * 3600 * 1000));
+const articles = [...recent, ...older].slice(0, 10);
 const coinCtx = $('Extract Coin ID').first().json;
 return [{ json: { ...coinCtx, newsArticles: articles, newsCount: articles.length } }];`,
 
@@ -477,7 +489,10 @@ const cfg = $('Config').first().json;
 const btcG = tech.btcGate || { btcGate: 'neutral', btcRsi: 50, btcVsSma: 0 };
 
 const ts = tech.technicalScore;
-const decision = ts > cfg.thresholds.buy ? 'BUY' : ts < cfg.thresholds.sell ? 'SELL' : 'HOLD';
+let decision = ts > cfg.thresholds.buy ? 'BUY' : ts < cfg.thresholds.sell ? 'SELL' : 'HOLD';
+if (decision === 'BUY' && btcG.btcGate === 'bearish') {
+  decision = 'HOLD (BTC BEARISH)';
+}
 const price = new Intl.NumberFormat('id-ID').format(tech.currentPrice);
 const trendLabel = tech.trendDir > 0 ? 'UPTREND (SMA20 + MACD bullish)' : tech.trendDir < 0 ? 'DOWNTREND (SMA20 + MACD bearish)' : 'SIDEWAYS/TIDAK JELAS';
 const adxLabel = (tech.adxVal || 0) > 25 ? 'KUAT (' + tech.adxVal + ')' : (tech.adxVal || 0) > 15 ? 'MODERAT (' + tech.adxVal + ')' : 'LEMAH/SIDEWAYS (' + (tech.adxVal || 0) + ')';
@@ -972,6 +987,14 @@ if (!query) {
   return [{ json: {
     found: false,
     telegramMessage: '❌ Masukkan simbol koin yang ingin dibeli.\nContoh: <code>/buy SOL 150k</code> atau <code>/buy BTC</code>',
+    chatId: cfg.telegramChatId, botToken: cfg.botToken,
+  }}];
+}
+
+if (update.invalidModal) {
+  return [{ json: {
+    found: false,
+    telegramMessage: '❌ Nominal modal <b>' + update.invalidModal + '</b> tidak valid.\nContoh penggunaan: <code>/buy SOL 150k</code> atau <code>/buy BTC 200000</code>',
     chatId: cfg.telegramChatId, botToken: cfg.botToken,
   }}];
 }
@@ -1830,6 +1853,15 @@ if (!query) {
       '',
       '<i>Fitur ini mengukur Skor Risiko 1-10, Downside SMA20/Lower BB, Dynamic TP/SL (R:R min 1:2.0), & Skenario Agresif bagi Risk-Takers.</i>',
     ].join('\n'),
+    chatId: update.chatId || cfg.telegramChatId,
+    botToken: cfg.botToken,
+  }}];
+}
+
+if (update.invalidModal) {
+  return [{ json: {
+    found: false,
+    telegramMessage: '❌ Nominal modal <b>' + update.invalidModal + '</b> tidak valid.\nContoh penggunaan: <code>/risk SOL 150k</code> atau <code>/risk BTC 500000</code>',
     chatId: update.chatId || cfg.telegramChatId,
     botToken: cfg.botToken,
   }}];

@@ -15,7 +15,7 @@ db.exec(`
   PRAGMA busy_timeout = 5000;
 `);
 
-// 1. Inisialisasi tabel & migrasi skema
+// 1. Inisialisasi tabel dasar
 db.exec(`
 CREATE TABLE IF NOT EXISTS user_positions (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -43,7 +43,7 @@ CREATE TABLE IF NOT EXISTS position_transactions (
   position_id INTEGER,
   simbol TEXT NOT NULL,
   coin_id TEXT NOT NULL,
-  tipe TEXT NOT NULL, -- BUY, DCA_AVERAGE_UP, DCA_AVERAGE_DOWN, PARTIAL_SELL, CLOSE_SELL
+  tipe TEXT NOT NULL, -- BUY, DCA_AVERAGE_UP, DCA_AVERAGE_DOWN, PARTIAL_SELL, CLOSE_SELL, MERGE_DCA
   tanggal TEXT NOT NULL,
   waktu TEXT NOT NULL,
   harga REAL NOT NULL,
@@ -54,26 +54,59 @@ CREATE TABLE IF NOT EXISTS position_transactions (
   notes TEXT,
   FOREIGN KEY (position_id) REFERENCES user_positions(id)
 );
-
-CREATE UNIQUE INDEX IF NOT EXISTS idx_active_coin ON user_positions (coin_id) WHERE status = 'ACTIVE';
 `);
 
-// Migrasi kolom jika tabel lama belum memiliki quantity atau alerted_at
+// 2. Migrasi skema kolom jika tabel lama belum lengkap
 try {
   const cols = db.prepare("PRAGMA table_info(user_positions)").all().map(c => c.name);
-  if (!cols.includes('quantity')) {
-    db.exec("ALTER TABLE user_positions ADD COLUMN quantity REAL;");
-    db.exec("UPDATE user_positions SET quantity = modal_idr / harga_beli WHERE (quantity IS NULL OR quantity = 0) AND harga_beli > 0;");
+  const expectedCols = ['quantity', 'tanggal_jual', 'harga_jual', 'pnl_persen', 'pnl_idr', 'tp_alerted_at', 'sl_alerted_at'];
+  for (const col of expectedCols) {
+    if (!cols.includes(col)) {
+      const colType = (col === 'tanggal_jual' || col.endsWith('_at')) ? 'TEXT' : 'REAL';
+      db.exec(`ALTER TABLE user_positions ADD COLUMN ${col} ${colType};`);
+    }
   }
-  if (!cols.includes('tp_alerted_at')) {
-    db.exec("ALTER TABLE user_positions ADD COLUMN tp_alerted_at TEXT;");
-  }
-  if (!cols.includes('sl_alerted_at')) {
-    db.exec("ALTER TABLE user_positions ADD COLUMN sl_alerted_at TEXT;");
-  }
+  db.exec("UPDATE user_positions SET quantity = modal_idr / harga_beli WHERE (quantity IS NULL OR quantity = 0) AND harga_beli > 0;");
 } catch (e) {
   // Ignored if already migrated
 }
+
+// 3. Self-healing migration: Rekonsiliasi posisi duplikat lama sebelum membuat unique index
+try {
+  const dups = db.prepare(`
+    SELECT coin_id FROM user_positions WHERE status = 'ACTIVE' GROUP BY coin_id HAVING COUNT(*) > 1
+  `).all();
+  for (const { coin_id } of dups) {
+    const rows = db.prepare(`
+      SELECT * FROM user_positions WHERE coin_id = ? AND status = 'ACTIVE' ORDER BY id ASC
+    `).all(coin_id);
+    if (rows.length > 1) {
+      const primary = rows[0];
+      let totalModal = Number(primary.modal_idr);
+      let totalQty = Number(primary.quantity) || (totalModal / Number(primary.harga_beli));
+      const now = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta' }).format(new Date());
+      for (let i = 1; i < rows.length; i++) {
+        const dup = rows[i];
+        const dupModal = Number(dup.modal_idr);
+        const dupQty = Number(dup.quantity) || (dupModal / Number(dup.harga_beli));
+        totalModal += dupModal;
+        totalQty += dupQty;
+        db.prepare("UPDATE user_positions SET status = 'CLOSED', tanggal_jual = ?, harga_jual = harga_beli WHERE id = ?").run(now, dup.id);
+        db.prepare(`
+          INSERT INTO position_transactions (position_id, simbol, coin_id, tipe, tanggal, waktu, harga, modal_idr, quantity, notes)
+          VALUES (?, ?, ?, 'MERGE_DCA', ?, '00.00', ?, ?, ?, 'Consolidated duplicate pre-migration position')
+        `).run(primary.id, primary.simbol, coin_id, now, dup.harga_beli, dupModal, dupQty);
+      }
+      const avgPrice = totalModal / totalQty;
+      db.prepare("UPDATE user_positions SET modal_idr = ?, quantity = ?, harga_beli = ? WHERE id = ?").run(totalModal, totalQty, avgPrice, primary.id);
+    }
+  }
+} catch (e) {
+  // Ignored if table is fresh
+}
+
+// 4. Buat unique partial index setelah rekonsiliasi dipastikan bersih
+db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_active_coin ON user_positions (coin_id) WHERE status = 'ACTIVE';");
 
 const [,, command, ...args] = process.argv;
 
@@ -130,13 +163,21 @@ function withTx(fn) {
       const [simbolRaw, coinIdRaw, nama, hargaStr, modalStr, tpStr, slStr] = args;
       const simbol = (simbolRaw || '').toUpperCase().trim();
       const coinId = (coinIdRaw || '').toLowerCase().trim();
-      const hargaBeli = parseFloat(hargaStr) || 0;
-      const modalIdr = parseFloat(modalStr) || 100000;
+      const hargaBeli = parseFloat(hargaStr);
+      const modalIdr = parseFloat(modalStr);
       const tpPrice = parseFloat(tpStr) || (hargaBeli * 1.12);
       const slPrice = parseFloat(slStr) || (hargaBeli * 0.94);
       
-      if (!simbol || hargaBeli <= 0 || !Number.isFinite(hargaBeli)) {
+      if (!simbol || !Number.isFinite(hargaBeli) || hargaBeli <= 0) {
         console.log(JSON.stringify({ success: false, error: 'INVALID_ARGS', message: 'Harga beli harus positif dan valid' }));
+        process.exit(0);
+      }
+      if (!Number.isFinite(modalIdr) || modalIdr <= 0) {
+        console.log(JSON.stringify({ success: false, error: 'INVALID_ARGS', message: 'Nominal modal harus positif dan valid' }));
+        process.exit(0);
+      }
+      if (!Number.isFinite(tpPrice) || tpPrice <= 0 || !Number.isFinite(slPrice) || slPrice <= 0) {
+        console.log(JSON.stringify({ success: false, error: 'INVALID_ARGS', message: 'Target profit dan stop loss harus positif dan valid' }));
         process.exit(0);
       }
       
@@ -233,7 +274,7 @@ function withTx(fn) {
     } else if (command === 'sell') {
       const [simbolRaw, currentPriceStr, porsiStr, coinIdArg] = args;
       const simbol = (simbolRaw || '').toUpperCase().trim();
-      const currentPrice = parseFloat(currentPriceStr) || 0;
+      const currentPrice = parseFloat(currentPriceStr);
       const coinId = (coinIdArg || '').toLowerCase().trim();
       
       if (!currentPrice || currentPrice <= 0 || !Number.isFinite(currentPrice)) {
@@ -242,101 +283,101 @@ function withTx(fn) {
       }
       
       const targetQuery = coinId || simbol;
-      const existingRows = coinId
-        ? db.prepare("SELECT * FROM user_positions WHERE coin_id = ? AND status = 'ACTIVE'").all(coinId)
-        : db.prepare("SELECT * FROM user_positions WHERE (UPPER(simbol) = UPPER(?) OR LOWER(coin_id) = LOWER(?)) AND status = 'ACTIVE'").all(simbol, simbol);
-      
-      if (existingRows.length === 0) {
-        console.log(JSON.stringify({ success: false, error: 'NOT_FOUND', simbol: targetQuery }));
-        process.exit(0);
-      }
-      if (existingRows.length > 1) {
-        console.log(JSON.stringify({ 
-          success: false, 
-          error: 'AMBIGUOUS_SYMBOL', 
-          message: `Ditemukan ${existingRows.length} posisi aktif untuk ${targetQuery}. Harap gunakan coin_id spesifik.`,
-          positions: existingRows.map(r => ({ id: r.id, simbol: r.simbol, coin_id: r.coin_id, nama: r.nama }))
-        }));
-        process.exit(0);
-      }
-      
-      const existing = existingRows[0];
-      const hargaBeli = Number(existing.harga_beli);
-      const totalModal = Number(existing.modal_idr);
-      const totalQuantity = Number(existing.quantity) > 0 ? Number(existing.quantity) : (totalModal / hargaBeli);
       const { tanggal, waktu } = nowTime();
       
-      // Parse porsi sell strictly (default 100% jika argumen kosong)
-      let sellRatio = 1.0;
-      let isPartial = false;
-      const pRaw = (porsiStr || '').trim().toLowerCase();
-      
-      if (pRaw && pRaw !== 'all' && pRaw !== '100%') {
-        const pctMatch = pRaw.match(/^(\d+(\.\d+)?)%$/);
-        const nomMatch = pRaw.match(/^(\d+(\.\d+)?)(k)?$/i);
+      // Atomic transaction: SELECT, validate portion, calculate, UPDATE, and INSERT under immediate write lock
+      const result = withTx(() => {
+        const existingRows = coinId
+          ? db.prepare("SELECT * FROM user_positions WHERE coin_id = ? AND status = 'ACTIVE'").all(coinId)
+          : db.prepare("SELECT * FROM user_positions WHERE (UPPER(simbol) = UPPER(?) OR LOWER(coin_id) = LOWER(?)) AND status = 'ACTIVE'").all(simbol, simbol);
         
-        if (pctMatch) {
-          const pct = parseFloat(pctMatch[1]);
-          if (!Number.isFinite(pct) || pct <= 0 || pct > 100) {
-            console.log(JSON.stringify({ 
-              success: false, 
-              error: 'INVALID_PORTION', 
-              message: `Porsi jual ${porsiStr} tidak valid. Persentase harus antara 1% s/d 100%.` 
-            }));
-            process.exit(0);
-          }
-          if (pct < 100) {
-            sellRatio = pct / 100;
-            isPartial = true;
-          } else {
-            sellRatio = 1.0;
-            isPartial = false;
-          }
-        } else if (nomMatch) {
-          let nom = parseFloat(nomMatch[1]);
-          if (nomMatch[3]) {
-            nom *= 1000;
-          }
-          if (!Number.isFinite(nom) || nom <= 0 || nom > totalModal) {
-            console.log(JSON.stringify({ 
-              success: false, 
-              error: 'INVALID_PORTION', 
-              message: `Nominal jual ${porsiStr} tidak valid. Nominal harus lebih dari Rp 0 dan maksimal modal aktif (Rp ${Math.round(totalModal).toLocaleString('id-ID')}).` 
-            }));
-            process.exit(0);
-          }
-          if (Math.abs(nom - totalModal) < 1) {
-            sellRatio = 1.0;
-            isPartial = false;
-          } else {
-            sellRatio = nom / totalModal;
-            isPartial = true;
-          }
-        } else {
-          console.log(JSON.stringify({ 
-            success: false, 
-            error: 'INVALID_PORTION', 
-            message: `Porsi atau nominal jual "${porsiStr}" tidak valid. Format yang didukung: persentase (misal: 25%, 50%, 100%, all) atau nominal (misal: 50k, 100000).` 
-          }));
-          process.exit(0);
+        if (existingRows.length === 0) {
+          return { success: false, error: 'NOT_FOUND', simbol: targetQuery };
         }
-      }
-      
-      const soldModal = totalModal * sellRatio;
-      const soldQuantity = totalQuantity * sellRatio;
-      
-      // Direct proceeds calculation to avoid loss of precision from intermediate rounded percentages
-      const proceeds = soldQuantity * currentPrice;
-      const pnlIdr = Math.round(proceeds - soldModal);
-      const totalReturn = Math.round(proceeds);
-      const pnlPct = Number(((currentPrice - hargaBeli) / hargaBeli * 100).toFixed(2));
-      
-      if (isPartial) {
-        const remainingModal = totalModal - soldModal;
-        const remainingQuantity = totalQuantity - soldQuantity;
+        if (existingRows.length > 1) {
+          return { 
+            success: false, 
+            error: 'AMBIGUOUS_SYMBOL', 
+            message: `Ditemukan ${existingRows.length} posisi aktif untuk ${targetQuery}. Harap gunakan coin_id spesifik.`,
+            positions: existingRows.map(r => ({ id: r.id, simbol: r.simbol, coin_id: r.coin_id, nama: r.nama }))
+          };
+        }
         
-        // Atomic transaction for partial sell
-        withTx(() => {
+        const existing = existingRows[0];
+        const hargaBeli = Number(existing.harga_beli);
+        const totalModal = Number(existing.modal_idr);
+        const totalQuantity = Number(existing.quantity) > 0 ? Number(existing.quantity) : (totalModal / hargaBeli);
+        
+        // Parse porsi sell strictly (default 100% jika argumen kosong)
+        let sellRatio = 1.0;
+        let isPartial = false;
+        const pRaw = (porsiStr || '').trim().toLowerCase();
+        
+        if (pRaw && pRaw !== 'all' && pRaw !== '100%') {
+          const pctMatch = pRaw.match(/^(\d+(\.\d+)?)%$/);
+          const nomMatch = pRaw.match(/^(\d+(\.\d+)?)(k)?$/i);
+          
+          if (pctMatch) {
+            const pct = parseFloat(pctMatch[1]);
+            if (!Number.isFinite(pct) || pct <= 0 || pct > 100) {
+              return { 
+                success: false, 
+                error: 'INVALID_PORTION', 
+                message: `Porsi jual ${porsiStr} tidak valid. Persentase harus antara 1% s/d 100%.` 
+              };
+            }
+            if (pct < 100) {
+              sellRatio = pct / 100;
+              isPartial = true;
+            } else {
+              sellRatio = 1.0;
+              isPartial = false;
+            }
+          } else if (nomMatch) {
+            let nom = parseFloat(nomMatch[1]);
+            if (nomMatch[3]) {
+              nom *= 1000;
+            }
+            if (!Number.isFinite(nom) || nom <= 0 || nom > totalModal) {
+              return { 
+                success: false, 
+                error: 'INVALID_PORTION', 
+                message: `Nominal jual ${porsiStr} tidak valid. Nominal harus lebih dari Rp 0 dan maksimal modal aktif (Rp ${Math.round(totalModal).toLocaleString('id-ID')}).` 
+              };
+            }
+            if (Math.abs(nom - totalModal) < 1) {
+              sellRatio = 1.0;
+              isPartial = false;
+            } else {
+              sellRatio = nom / totalModal;
+              isPartial = true;
+            }
+          } else {
+            return { 
+              success: false, 
+              error: 'INVALID_PORTION', 
+              message: `Porsi atau nominal jual "${porsiStr}" tidak valid. Format yang didukung: persentase (misal: 25%, 50%, 100%, all) atau nominal (misal: 50k, 100000).` 
+            };
+          }
+        }
+        
+        const soldModal = totalModal * sellRatio;
+        const soldQuantity = totalQuantity * sellRatio;
+        
+        // Direct proceeds calculation to avoid loss of precision from intermediate rounded percentages
+        const proceeds = soldQuantity * currentPrice;
+        const pnlIdr = Math.round(proceeds - soldModal);
+        const totalReturn = Math.round(proceeds);
+        const pnlPct = Number(((currentPrice - hargaBeli) / hargaBeli * 100).toFixed(2));
+        
+        // Adaptive portionPct formatting: 2 decimals if < 1%, else 1 decimal (never falsely show 0%)
+        const pctRaw = sellRatio * 100;
+        const portionPct = Number(pctRaw < 1 ? pctRaw.toFixed(2) : pctRaw.toFixed(1));
+        
+        if (isPartial) {
+          const remainingModal = totalModal - soldModal;
+          const remainingQuantity = totalQuantity - soldQuantity;
+          
           db.prepare(`
             UPDATE user_positions 
             SET modal_idr = ?, quantity = ?
@@ -346,29 +387,26 @@ function withTx(fn) {
           db.prepare(`
             INSERT INTO position_transactions (position_id, simbol, coin_id, tipe, tanggal, waktu, harga, modal_idr, quantity, pnl_idr, pnl_persen, notes)
             VALUES (?, ?, ?, 'PARTIAL_SELL', ?, ?, ?, ?, ?, ?, ?, ?)
-          `).run(existing.id, existing.simbol, existing.coin_id, tanggal, waktu, currentPrice, soldModal, soldQuantity, pnlIdr, pnlPct, `Partial close ${(sellRatio * 100).toFixed(0)}%`);
-        });
-        
-        console.log(JSON.stringify({
-          success: true,
-          isPartial: true,
-          portionPct: Number((sellRatio * 100).toFixed(0)),
-          simbol: existing.simbol,
-          nama: existing.nama,
-          tanggalBeli: existing.tanggal_beli,
-          hargaBeli,
-          hargaJual: currentPrice,
-          modalTerjual: soldModal,
-          modalSisa: remainingModal,
-          modalAwal: totalModal,
-          modalIdr: soldModal,
-          pnlPct,
-          pnlIdr,
-          totalReturn,
-        }));
-      } else {
-        // Atomic transaction for full close
-        withTx(() => {
+          `).run(existing.id, existing.simbol, existing.coin_id, tanggal, waktu, currentPrice, soldModal, soldQuantity, pnlIdr, pnlPct, `Partial close ${portionPct}%`);
+          
+          return {
+            success: true,
+            isPartial: true,
+            portionPct,
+            simbol: existing.simbol,
+            nama: existing.nama,
+            tanggalBeli: existing.tanggal_beli,
+            hargaBeli,
+            hargaJual: currentPrice,
+            modalTerjual: soldModal,
+            modalSisa: remainingModal,
+            modalAwal: totalModal,
+            modalIdr: soldModal,
+            pnlPct,
+            pnlIdr,
+            totalReturn,
+          };
+        } else {
           db.prepare(`
             UPDATE user_positions 
             SET status = 'CLOSED', tanggal_jual = ?, harga_jual = ?, pnl_persen = ?, pnl_idr = ? 
@@ -379,24 +417,26 @@ function withTx(fn) {
             INSERT INTO position_transactions (position_id, simbol, coin_id, tipe, tanggal, waktu, harga, modal_idr, quantity, pnl_idr, pnl_persen, notes)
             VALUES (?, ?, ?, 'CLOSE_SELL', ?, ?, ?, ?, ?, ?, ?, 'Full close position')
           `).run(existing.id, existing.simbol, existing.coin_id, tanggal, waktu, currentPrice, totalModal, totalQuantity, pnlIdr, pnlPct);
-        });
-        
-        console.log(JSON.stringify({
-          success: true,
-          isPartial: false,
-          portionPct: 100,
-          simbol: existing.simbol,
-          nama: existing.nama,
-          tanggalBeli: existing.tanggal_beli,
-          hargaBeli,
-          hargaJual: currentPrice,
-          modalAwal: totalModal,
-          modalIdr: totalModal,
-          totalReturn,
-          pnlPct,
-          pnlIdr,
-        }));
-      }
+          
+          return {
+            success: true,
+            isPartial: false,
+            portionPct: 100,
+            simbol: existing.simbol,
+            nama: existing.nama,
+            tanggalBeli: existing.tanggal_beli,
+            hargaBeli,
+            hargaJual: currentPrice,
+            modalAwal: totalModal,
+            modalIdr: totalModal,
+            totalReturn,
+            pnlPct,
+            pnlIdr,
+          };
+        }
+      });
+      
+      console.log(JSON.stringify(result));
     } else if (command === 'get-active') {
       const [simbolRaw] = args;
       const target = (simbolRaw || '').trim();
