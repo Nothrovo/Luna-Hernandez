@@ -335,7 +335,7 @@ const msg = [
   '👉 <i>Coba:</i> <code>/ask bagaimana peluang swing trading minggu ini?</code>',
   '',
   '6️⃣ <b>Radar Pasar & Rekomendasi</b>',
-  '• <code>/rec</code> — 3 rekomendasi koin pullback sehat untuk swing entry',
+  '• <code>/rec coin|stock|futures</code> — 3 kandidat deterministik per kelas aset',
   '• <code>/news &lt;simbol&gt;</code> — Headline berita live & analisis sentimen AI (e.g. <code>/news sol</code>)',
   '• <code>/market</code> — Top 5 gainers & losers 24 jam dalam IDR',
   '',
@@ -359,7 +359,7 @@ return [{ json: { telegramMessage: msg, chatId: cfg.telegramChatId, botToken: cf
   '📖 <b>Daftar Perintah Luna Hernandez Bot</b>',
   '',
   '🎯 <b>Riset & Rekomendasi:</b>',
-  '• <code>/rec</code> — Rekomendasi 3 koin pullback sehat untuk swing entry',
+  '• <code>/rec coin|stock|futures</code> — Radar 3 kandidat per kelas aset (<code>/rec</code> = coin)',
   '• <code>/risk &lt;simbol&gt; [modal]</code> — Kalkulator risiko, downside, & sizing modal',
   '• <code>/news &lt;simbol&gt;</code> — Headline berita live terhangat & analisis sentimen AI',
   '• <code>/coin &lt;simbol&gt;</code> — Deep analysis: RSI, MACD, Tren, Berita Live, & AI',
@@ -1663,7 +1663,119 @@ const msg = [
 
 return [{ json: { telegramMessage: msg, chatId: cfg.telegramChatId, botToken: cfg.botToken } }];`,
 
-  // ── /rec (Pullback Screener) ──
+  // ── /rec coin|stock|futures ──
+  prepareRecommendation: String.raw`const update = $('Parse Incoming Message').first().json;
+const cfg = $('Config').first().json;
+const requested = (String(update.args || '').trim().split(/\s+/)[0].toLowerCase() || 'coin');
+const recommendationMode = /^(coin|stock|futures)$/.test(requested) ? requested : 'invalid';
+const dbCmd = recommendationMode === 'stock' || recommendationMode === 'futures'
+  ? 'node /home/node/.n8n/market_analysis_cli.mjs recommend-' + recommendationMode
+  : '';
+const telegramMessage = recommendationMode === 'invalid'
+  ? '❌ Format tidak dikenal. Gunakan <code>/rec coin</code>, <code>/rec stock</code>, atau <code>/rec futures</code>.\n\n<code>/rec</code> tanpa argumen tetap sama dengan <code>/rec coin</code>.'
+  : '';
+return [{ json: {
+  ...update,
+  recommendationMode,
+  dbCmd,
+  telegramMessage,
+  chatId: update.chatId || cfg.telegramChatId,
+  botToken: cfg.botToken,
+} }];`,
+
+  parseMarketRecommendations: String.raw`const ctx = $('Prepare Recommendation').first().json;
+const rawInput = $input.first().json;
+const rawText = String(rawInput.stdout || rawInput.error || rawInput.stderr || '').trim();
+let parsed = null;
+try {
+  const match = rawText.match(/\{[\s\S]*\}/);
+  if (match) parsed = JSON.parse(match[0]);
+} catch {}
+if (!parsed || typeof parsed !== 'object') {
+  parsed = { ok: false, error: { code: 'INVALID_PROVIDER_RESPONSE', message: 'CLI tidak mengembalikan JSON rekomendasi yang valid.', retryable: false } };
+}
+return [{ json: {
+  ...ctx,
+  recommendationOk: parsed?.ok === true && parsed?.recommendations != null,
+  recommendations: parsed?.recommendations || null,
+  recommendationError: parsed?.error || null,
+} }];`,
+
+  formatMarketRecommendations: String.raw`const ctx = $('Parse Market Recommendations').first().json;
+const cfg = $('Config').first().json;
+const result = ctx.recommendations;
+const candidates = Array.isArray(result.candidates) ? result.candidates : [];
+const fmt = (value, digits = 2) => value == null || !Number.isFinite(Number(value))
+  ? 'N/A'
+  : Number(value).toLocaleString('en-US', { maximumFractionDigits: digits });
+let message;
+if (!candidates.length) {
+  message = [
+    '🟡 <b>Belum ada setup ' + ctx.recommendationMode.toUpperCase() + ' yang lolos filter</b>',
+    'Universe diperiksa: ' + (result.universeCount ?? result.evaluatedCount ?? 0) + '.',
+    'Tidak ada kandidat yang memenuhi tren, kualitas pullback, dan batas crowding saat ini.',
+    '',
+    '⚠️ <i>Filter tidak dilonggarkan hanya untuk memaksa munculnya rekomendasi.</i>',
+  ].join('\n');
+} else if (result.assetClass === 'stock') {
+  const cards = candidates.map((candidate, index) => [
+    (index + 1) + '️⃣ <b>' + candidate.symbol + ' — ' + candidate.setup + '</b>',
+    '• Harga: $' + fmt(candidate.price, 4) + ' | Rank ' + fmt(candidate.rankScore, 1) + '/100',
+    '• Teknikal ' + fmt(candidate.factors.technicalScore, 1) + ' | RS20 vs SPY ' + fmt(candidate.factors.relativeStrength20d * 100, 2) + '%',
+    '• RSI ' + fmt(candidate.factors.rsi14, 1) + ' | ADX ' + fmt(candidate.factors.adx14, 1) + ' | %B ' + fmt(candidate.factors.bollingerPercentB, 2),
+    '• Support $' + fmt(candidate.factors.support, 4) + ' | Resistance $' + fmt(candidate.factors.resistance, 4),
+    '👉 <code>/stock ' + candidate.symbol + '</code>',
+  ].join('\n')).join('\n\n');
+  message = [
+    '📈 <b>Radar Rekomendasi Saham AS</b>',
+    '<i>Alpaca IEX delayed | ' + result.successfulSymbols + '/' + result.universeCount + ' simbol terbaca</i>',
+    '',
+    cards,
+    '',
+    '⚠️ <i>Screening teknikal cepat; buka /stock untuk fundamental SEC dan DCF. Decision support only.</i>',
+  ].join('\n');
+} else {
+  const cards = candidates.map((candidate, index) => {
+    const sideIcon = candidate.side === 'LONG' ? '🟢' : '🔴';
+    const noExecution = candidate.executionAllowed === false ? 'analysis-only' : 'status tidak valid';
+    return [
+      (index + 1) + '️⃣ ' + sideIcon + ' <b>' + candidate.symbol + ' — ' + candidate.side + ' ' + candidate.setup + '</b>',
+      '• Mark: ' + fmt(candidate.price, 6) + ' USDT | Rank ' + fmt(candidate.rankScore, 1) + '/100',
+      '• Teknikal ' + fmt(candidate.factors.technicalScore, 1) + ' | RSI ' + fmt(candidate.factors.rsi14, 1) + ' | ADX ' + fmt(candidate.factors.adx14, 1),
+      '• Funding ' + fmt(candidate.factors.fundingRatePct, 5) + '% | ΔOI ' + fmt(candidate.factors.oiChangePct, 2) + '% | ' + candidate.factors.oiRegime,
+      '• Support ' + fmt(candidate.factors.support, 6) + ' | Resistance ' + fmt(candidate.factors.resistance, 6),
+      '👉 <code>/futures ' + candidate.symbol + '</code> | ' + noExecution,
+    ].join('\n');
+  }).join('\n\n');
+  message = [
+    '🧲 <b>Radar Rekomendasi Binance USD-M Futures</b>',
+    '<i>' + result.scannedCount + ' pair paling likuid dipindai | market data publik</i>',
+    '',
+    cards,
+    '',
+    '⛔ <i>Tidak ada order otomatis atau estimasi liquidation. Decision support only.</i>',
+  ].join('\n');
+}
+return [{ json: { telegramMessage: message, chatId: cfg.telegramChatId, botToken: cfg.botToken } }];`,
+
+  buildRecommendationError: String.raw`const ctx = $('Parse Market Recommendations').first().json;
+const cfg = $('Config').first().json;
+const error = ctx.recommendationError || {};
+const messages = {
+  CONFIG_MISSING: 'Konfigurasi Alpaca belum lengkap. Isi ALPACA_API_KEY_ID dan ALPACA_API_SECRET untuk memakai <code>/rec stock</code>.',
+  RATE_LIMITED: 'Provider sedang membatasi request screener. Tunggu sebentar lalu coba lagi.',
+  ALPACA_UNAVAILABLE: 'Universe saham belum bisa diambil dari Alpaca.',
+  BINANCE_UNAVAILABLE: 'Universe futures belum bisa diambil dari Binance.',
+  PROVIDER_UNAVAILABLE: 'Respons provider tidak dapat diproses.',
+  INVALID_PROVIDER_RESPONSE: 'Format data provider berubah atau belum lengkap. Tidak ada rekomendasi yang dipaksakan.',
+  INSUFFICIENT_DATA: 'Candle tertutup belum cukup untuk menjalankan screener.',
+};
+return [{ json: {
+  telegramMessage: '❌ <b>Recommendation screener gagal</b> [' + (error.code || 'UNKNOWN') + ']\n' + (messages[error.code] || 'Data kandidat tidak lengkap atau tidak valid.'),
+  chatId: cfg.telegramChatId,
+  botToken: cfg.botToken,
+} }];`,
+
   formatRecMessage: String.raw`const cfg = $('Config').first().json;
 const coins = $input.all().map(i => i.json);
 
@@ -1771,12 +1883,12 @@ const btcNote = isBtcWeak
   : '';
 
 const msg = [
-  '🎯 <b>Radar Rekomendasi Swing Entry Luna Hernandez</b>',
+  '🎯 <b>Radar Rekomendasi Crypto Spot Luna Hernandez</b>',
   '<i>' + now + ' WIB | Kriteria: Uptrend Mingguan + Pullback / Akumulasi</i>',
   btcNote,
   cards.join('\n\n'),
   '',
-  '💡 <i>Catatan: Level TP/SL di atas adalah estimasi momentum awal. Ketik <code>/risk &lt;simbol&gt;</code> untuk kalkulator ATR dinamis & sizing terukur.</i>\n' +
+  '💡 <i>Catatan: <code>/rec</code> sama dengan <code>/rec coin</code>. Level TP/SL di atas adalah estimasi momentum awal. Ketik <code>/risk &lt;simbol&gt;</code> untuk kalkulator ATR dinamis & sizing terukur.</i>\n' +
   '<i>Ketik <code>/buy &lt;simbol&gt; [modal]</code> untuk langsung memasukkan ke portofolio.</i>\n' +
   '⚠️ <i>Decision support only. Bukan saran finansial.</i>',
 ].filter(Boolean).join('\n');
@@ -2614,9 +2726,35 @@ const nodes = [
   httpGet('B8206', 'Fetch Stat Chart', "=https://api.coingecko.com/api/v3/coins/{{ $json.coinId }}/market_chart?vs_currency={{ $('Config').first().json.quoteCurrency }}&days={{ $('Config').first().json.marketDays }}", 1340, 1620, { onError: 'continueRegularOutput' }),
   codeNode('B8207', 'Build Stat Report', code.buildStatReport, 1580, 1620),
   tgSend('B8208', 'Send Stat Report', 1820, 1620),
-  httpGet('B8301', 'CoinGecko Rec Markets', "=https://api.coingecko.com/api/v3/coins/markets?vs_currency={{ $('Config').first().json.quoteCurrency }}&order=market_cap_desc&per_page=100&page=1&price_change_percentage=24h,7d", 380, 1950, { onError: 'continueRegularOutput' }),
-  codeNode('B8302', 'Format Rec Message', code.formatRecMessage, 620, 1950),
-  tgSend('B8303', 'Send Rec Message', 860, 1950),
+  codeNode('R1001', 'Prepare Recommendation', code.prepareRecommendation, 380, 1950),
+  {
+    parameters: {
+      mode: 'rules',
+      rules: {
+        values: [
+          { conditions: { conditions: [{ leftValue: '={{ $json.recommendationMode }}', rightValue: 'coin', operator: { type: 'string', operation: 'equals' } }], combinator: 'and' }, renameOutput: true, outputKey: 'coin' },
+          { conditions: { conditions: [{ leftValue: '={{ $json.recommendationMode }}', rightValue: 'stock', operator: { type: 'string', operation: 'equals' } }], combinator: 'and' }, renameOutput: true, outputKey: 'stock' },
+          { conditions: { conditions: [{ leftValue: '={{ $json.recommendationMode }}', rightValue: 'futures', operator: { type: 'string', operation: 'equals' } }], combinator: 'and' }, renameOutput: true, outputKey: 'futures' },
+        ],
+      },
+      fallbackOutput: 'extra',
+    },
+    id: 'R1002',
+    name: 'Recommendation Type',
+    type: 'n8n-nodes-base.switch',
+    typeVersion: 3.2,
+    position: [620, 1950],
+  },
+  httpGet('B8301', 'CoinGecko Rec Markets', "=https://api.coingecko.com/api/v3/coins/markets?vs_currency={{ $('Config').first().json.quoteCurrency }}&order=market_cap_desc&per_page=100&page=1&price_change_percentage=24h,7d", 860, 1870, { onError: 'continueRegularOutput' }),
+  codeNode('B8302', 'Format Rec Message', code.formatRecMessage, 1100, 1870),
+  tgSend('B8303', 'Send Rec Message', 1340, 1870),
+  execNode('R1003', 'Execute Market Recommendations', '={{ $json.dbCmd }}', 860, 2030),
+  codeNode('R1004', 'Parse Market Recommendations', code.parseMarketRecommendations, 1100, 2030),
+  ifNode('R1005', 'Market Recommendations OK?', '={{ $json.recommendationOk }}', 1340, 2030),
+  codeNode('R1006', 'Format Market Recommendations', code.formatMarketRecommendations, 1580, 1950),
+  codeNode('R1007', 'Build Recommendation Error', code.buildRecommendationError, 1580, 2110),
+  tgSend('R1008', 'Send Market Recommendations', 1820, 1950),
+  tgSend('R1009', 'Send Recommendation Usage', 860, 2190),
   httpGet('N1001', 'CoinGecko Search News', "=https://api.coingecko.com/api/v3/search?query={{ encodeURIComponent($('Parse Incoming Message').first().json.coinArg || $('Parse Incoming Message').first().json.args || 'bitcoin') }}", 380, -200, { onError: 'continueRegularOutput' }),
   codeNode('N1002', 'Resolve News Target', code.resolveNewsTarget, 620, -200),
   httpGetText('N1003', 'Fetch News Feed', "={{ $json.newsQueryUrl }}", 860, -200),
@@ -2661,7 +2799,7 @@ const connections = {
     [{ node: 'CoinGecko Search Buy', type: 'main', index: 0 }],
     [{ node: 'Prepare Sell Query', type: 'main', index: 0 }],
     [{ node: 'Prepare Stat Query', type: 'main', index: 0 }],
-    [{ node: 'CoinGecko Rec Markets', type: 'main', index: 0 }],
+    [{ node: 'Prepare Recommendation', type: 'main', index: 0 }],
     [{ node: 'CoinGecko Search News', type: 'main', index: 0 }],
     [{ node: 'CoinGecko Search Risk', type: 'main', index: 0 }],
     [{ node: 'Unknown Command', type: 'main', index: 0 }],
@@ -2777,8 +2915,23 @@ const connections = {
   'Build Stat Report':        { main: [[{ node: 'Send Stat Report', type: 'main', index: 0 }]] },
 
   // /rec
+  'Prepare Recommendation':   { main: [[{ node: 'Recommendation Type', type: 'main', index: 0 }]] },
+  'Recommendation Type':      { main: [
+    [{ node: 'CoinGecko Rec Markets', type: 'main', index: 0 }],
+    [{ node: 'Execute Market Recommendations', type: 'main', index: 0 }],
+    [{ node: 'Execute Market Recommendations', type: 'main', index: 0 }],
+    [{ node: 'Send Recommendation Usage', type: 'main', index: 0 }],
+  ] },
   'CoinGecko Rec Markets':    { main: [[{ node: 'Format Rec Message', type: 'main', index: 0 }]] },
   'Format Rec Message':       { main: [[{ node: 'Send Rec Message', type: 'main', index: 0 }]] },
+  'Execute Market Recommendations': { main: [[{ node: 'Parse Market Recommendations', type: 'main', index: 0 }]] },
+  'Parse Market Recommendations': { main: [[{ node: 'Market Recommendations OK?', type: 'main', index: 0 }]] },
+  'Market Recommendations OK?': { main: [
+    [{ node: 'Format Market Recommendations', type: 'main', index: 0 }],
+    [{ node: 'Build Recommendation Error', type: 'main', index: 0 }],
+  ] },
+  'Format Market Recommendations': { main: [[{ node: 'Send Market Recommendations', type: 'main', index: 0 }]] },
+  'Build Recommendation Error': { main: [[{ node: 'Send Market Recommendations', type: 'main', index: 0 }]] },
 
   // /news
   'CoinGecko Search News':    { main: [[{ node: 'Resolve News Target', type: 'main', index: 0 }]] },
@@ -2831,7 +2984,7 @@ const workflow = {
     saveDataErrorExecution: 'last',
     saveDataSuccessExecution: 'all',
   },
-  versionId: 'B9000000-0000-4000-8000-000000000007',
+  versionId: 'B9000000-0000-4000-8000-000000000008',
   meta: { templateCredsSetupCompleted: true },
   tags: [],
 };

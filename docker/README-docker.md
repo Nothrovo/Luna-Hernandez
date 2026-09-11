@@ -35,6 +35,7 @@ Isi variabel berikut:
 | `ALPACA_API_KEY_ID` | Candle saham IEX | Ya untuk `/stock` |
 | `ALPACA_API_SECRET` | Candle saham IEX | Ya untuk `/stock` |
 | `SEC_USER_AGENT` | Identitas akses SEC, contoh aplikasi + email | Ya untuk akses SEC yang benar |
+| `STOCK_REC_UNIVERSE` | Maksimal 20 ticker yang dipindai `/rec stock` | Opsional |
 
 `/futures` hanya memakai endpoint market-data publik Binance USD-M dan tidak membutuhkan API key Binance. Tidak ada jalur order futures.
 
@@ -61,6 +62,8 @@ n8n tersedia di `http://localhost:5678`. Workflow bernama **Luna Hernandez — M
 ```bash
 docker compose exec -T n8n node /home/node/.n8n/market_analysis_cli.mjs stock AAPL
 docker compose exec -T n8n node /home/node/.n8n/market_analysis_cli.mjs futures BTCUSDT
+docker compose exec -T n8n node /home/node/.n8n/market_analysis_cli.mjs recommend-stock
+docker compose exec -T n8n node /home/node/.n8n/market_analysis_cli.mjs recommend-futures
 docker compose exec -T n8n node /home/node/.n8n/market_analysis_cli.mjs history
 docker compose exec -T n8n node /home/node/.n8n/manage_positions.mjs list-active
 docker compose exec -T n8n node /home/node/.n8n/manage_positions.mjs check-alerts

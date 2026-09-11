@@ -5,7 +5,9 @@ import { writeFileSync } from 'node:fs';
 
 import { MarketAnalysisError } from './market-analysis.mjs';
 import {
+  fetchFuturesRecommendations,
   fetchFuturesMarketAnalysis,
+  fetchStockRecommendations,
   fetchStockMarketAnalysis,
   requestWithRetry,
 } from './market-providers.mjs';
@@ -205,6 +207,22 @@ async function analyze(command, symbol) {
   return { ok: true, analysis };
 }
 
+async function recommend(assetClass) {
+  const common = {
+    fetchJson: (url, options) => cachedRequest(url, { ...options, responseType: 'json' }),
+  };
+  if (assetClass === 'stock') {
+    const configured = String(process.env.STOCK_REC_UNIVERSE || '').split(',').map(value => value.trim()).filter(Boolean);
+    const recommendations = await fetchStockRecommendations({
+      ...common,
+      ...(configured.length ? { universe: configured } : {}),
+    });
+    return { ok: true, recommendations };
+  }
+  const recommendations = await fetchFuturesRecommendations({ ...common });
+  return { ok: true, recommendations };
+}
+
 function errorEnvelope(error) {
   const known = error instanceof MarketAnalysisError;
   return {
@@ -222,9 +240,11 @@ const [,, command, ...args] = process.argv;
 try {
   let result;
   if (command === 'stock' || command === 'futures') result = await analyze(command, args[0]);
+  else if (command === 'recommend-stock') result = await recommend('stock');
+  else if (command === 'recommend-futures') result = await recommend('futures');
   else if (command === 'save') result = saveRecord(args[0]);
   else if (command === 'history') result = history(args[0]);
-  else throw new MarketAnalysisError('INVALID_COMMAND', 'Expected stock, futures, save, or history command');
+  else throw new MarketAnalysisError('INVALID_COMMAND', 'Expected stock, futures, recommend-stock, recommend-futures, save, or history command');
   writeFileSync(1, `${JSON.stringify(result)}\n`);
 } catch (error) {
   writeFileSync(1, `${JSON.stringify(errorEnvelope(error))}\n`);
