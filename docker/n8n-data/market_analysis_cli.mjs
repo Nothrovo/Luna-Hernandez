@@ -248,7 +248,7 @@ try {
   writeFileSync(1, `${JSON.stringify(result)}\n`);
 } catch (error) {
   writeFileSync(1, `${JSON.stringify(errorEnvelope(error))}\n`);
-  process.exitCode = 1;
+  if (command === 'save') process.exitCode = 1;
 } finally {
   database.close();
 }

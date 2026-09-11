@@ -29,6 +29,9 @@ services:
       - ./docker/n8n-data:/home/node/.n8n
     extra_hosts:
       - "host.docker.internal:host-gateway"
+      - "data.alpaca.markets:34.86.145.125"
+      - "api.alpaca.markets:34.86.145.125"
+      - "paper-api.alpaca.markets:34.86.145.125"
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost:5678/healthz"]
       interval: 30s
