@@ -185,8 +185,8 @@ const atrPct = currentPrice > 0 ? (atrVal / currentPrice) * 100 : 3.0;
 const dynSlPct = Number(Math.min(8.5, Math.max(4.5, 1.8 * atrPct)).toFixed(1));
 const rrRatio = (trendDir > 0 && adxVal > 25) ? 2.5 : 2.0;
 const dynTpPct = Number(Math.max(10.0, Math.min(25.0, dynSlPct * rrRatio)).toFixed(1));
-const dynTpPrice = Math.round(currentPrice * (1 + dynTpPct / 100));
-const dynSlPrice = Math.round(currentPrice * (1 - dynSlPct / 100));
+const dynTpPrice = currentPrice * (1 + dynTpPct / 100);
+const dynSlPrice = currentPrice * (1 - dynSlPct / 100);
 
 const techResult = {
   currentPrice, dataPoints: prices.length,
@@ -824,7 +824,7 @@ function fmt(val) {
   }).format(v);
 }
 
-let totalModal = 0, totalNilai = 0, hasStale = false;
+let totalModal = 0, pricedModal = 0, pricedNilai = 0, pricedCount = 0, hasStale = false;
 const positionRows = [];
 
 positions.forEach((pos, idx) => {
@@ -833,14 +833,17 @@ positions.forEach((pos, idx) => {
   const livePrice = priceData[pos.coin_id]?.idr;
   const isLive = typeof livePrice === 'number' && livePrice > 0;
 
+  totalModal += modal;
+
   if (isLive) {
     const currPrice = livePrice;
     const pnlPct = Number(((currPrice - buyPrice) / buyPrice * 100).toFixed(2));
     const pnlIdr = Math.round(modal * (pnlPct / 100));
     const currVal = modal + pnlIdr;
 
-    totalModal += modal;
-    totalNilai += currVal;
+    pricedModal += modal;
+    pricedNilai += currVal;
+    pricedCount++;
 
     const isProfit = pnlPct >= 0;
     const icon = isProfit ? '🟢' : '🔴';
@@ -854,8 +857,6 @@ positions.forEach((pos, idx) => {
     ].join('\n'));
   } else {
     hasStale = true;
-    totalModal += modal;
-    totalNilai += modal;
 
     positionRows.push([
       (idx + 1) + '️⃣ <b>' + pos.simbol + ' (' + pos.nama + ')</b>',
@@ -867,10 +868,34 @@ positions.forEach((pos, idx) => {
   }
 });
 
-const totalPnlPct = totalModal > 0 ? Number(((totalNilai - totalModal) / totalModal * 100).toFixed(2)) : 0;
-const totalPnlIdr = totalNilai - totalModal;
-const isTotProfit = totalPnlIdr >= 0;
-const totIcon = isTotProfit ? '🟢' : '🔴';
+let summaryLines = [];
+if (hasStale) {
+  const pricedPnlPct = pricedModal > 0 ? Number(((pricedNilai - pricedModal) / pricedModal * 100).toFixed(2)) : 0;
+  const pricedPnlIdr = pricedNilai - pricedModal;
+  const isPricedProfit = pricedPnlIdr >= 0;
+  const icon = isPricedProfit ? '🟢' : '🔴';
+
+  summaryLines = [
+    '────────────────────',
+    '💵 <b>Total Modal Terdaftar:</b> ' + fmt(totalModal),
+    '⚠️ <b>Status Valuasi:</b> Parsial (' + pricedCount + '/' + positions.length + ' koin live feed)',
+    '📊 <b>Estimasi Nilai (Live Only):</b> ' + fmt(pricedNilai),
+    '📈 <b>Floating PnL (Live Only):</b> ' + icon + ' ' + (isPricedProfit ? '+' : '') + pricedPnlPct + '% (' + (isPricedProfit ? '+' : '') + fmt(pricedPnlIdr) + ')',
+    '⏳ <i>Catatan: Total PnL lengkap N/A karena harga ' + (positions.length - pricedCount) + ' koin sedang tidak tersedia dari feed API.</i>',
+  ];
+} else {
+  const totalPnlPct = totalModal > 0 ? Number(((pricedNilai - pricedModal) / pricedModal * 100).toFixed(2)) : 0;
+  const totalPnlIdr = pricedNilai - pricedModal;
+  const isTotProfit = totalPnlIdr >= 0;
+  const totIcon = isTotProfit ? '🟢' : '🔴';
+
+  summaryLines = [
+    '────────────────────',
+    '💵 <b>Total Modal:</b> ' + fmt(totalModal),
+    '📊 <b>Estimasi Nilai:</b> ' + fmt(pricedNilai),
+    '📈 <b>Total Floating PnL:</b> ' + totIcon + ' ' + (isTotProfit ? '+' : '') + totalPnlPct + '% (' + (isTotProfit ? '+' : '') + fmt(totalPnlIdr) + ')',
+  ];
+}
 
 // BTC Macro info
 const btcPrice = priceData.bitcoin?.idr;
@@ -889,10 +914,7 @@ const msg = [
   '',
   positionRows.join('\n\n'),
   '',
-  '────────────────────',
-  '💵 <b>Total Modal:</b> ' + fmt(totalModal),
-  '📊 <b>Estimasi Nilai:</b> ' + fmt(totalNilai),
-  '📈 <b>Total Floating PnL:</b> ' + totIcon + ' ' + (isTotProfit ? '+' : '') + totalPnlPct + '% (' + (isTotProfit ? '+' : '') + fmt(totalPnlIdr) + ')',
+  summaryLines.join('\n'),
   '',
   btcText,
   '',
@@ -1195,8 +1217,8 @@ const porsi = sellCtx.porsiArg || '100%';
 
 // Validasi harga live pasar — tolak eksekusi jika API gagal demi mencegah penutupan di harga stale
 const validPrice = (typeof livePrice === 'number' && livePrice > 0) ? livePrice : 0;
-const dbCmd = "node /home/node/.n8n/manage_positions.mjs sell " + sellCtx.sym + " " + validPrice + " " + porsi;
-return [{ json: { dbCmd, currPrice: validPrice, sym: sellCtx.sym, porsi, chatId: sellCtx.chatId, botToken: sellCtx.botToken } }];`,
+const dbCmd = "node /home/node/.n8n/manage_positions.mjs sell " + sellCtx.sym + " " + validPrice + " " + porsi + " " + (sellCtx.coinId || '');
+return [{ json: { dbCmd, currPrice: validPrice, sym: sellCtx.sym, coinId: sellCtx.coinId, porsi, chatId: sellCtx.chatId, botToken: sellCtx.botToken } }];`,
 
   formatSellResponse: String.raw`const raw = ($input.first().json.stdout || '').trim();
 const cfg = $('Config').first().json;
@@ -1549,11 +1571,14 @@ const msg = [
   '⚠️ <i>Periksa detail status di <code>/stat &lt;simbol&gt;</code> atau <code>/portfolio</code>.</i>',
 ].join('\n');
 
+const ackCmd = alerts.map(a => 'node /home/node/.n8n/manage_positions.mjs ack-alert ' + a.positionId + ' ' + a.type).join(' && ');
+
 return [{ json: {
   hasAlerts: true,
   telegramMessage: msg,
   chatId: cfg.telegramChatId,
   botToken: cfg.botToken,
+  ackCmd: ackCmd || 'echo ok',
 }}];`,
 
   // ── /news (Live News Headlines & AI Sentiment) ──
@@ -1855,6 +1880,13 @@ for (const row of rawPrices) {
   }
 }
 const series = [...daily.values()].sort((a, b) => a.ts - b.ts);
+if (series.length < 15) {
+  return [{ json: {
+    telegramMessage: '⚠️ Data candle historis untuk <b>' + coinCtx.coinSymbol + ' (' + coinCtx.coinName + ')</b> hanya tersedia ' + series.length + ' hari (minimal 15 hari diperlukan untuk kalkulasi RSI, MACD, Bollinger Bands, dan ATR).\n\nSilakan analisa koin dengan riwayat pasar yang lebih matang.',
+    chatId: coinCtx.chatId,
+    botToken: coinCtx.botToken,
+  }}];
+}
 const prices = series.map(p => p.price);
 const highs = series.map(p => p.high);
 const lows = series.map(p => p.low);
@@ -1930,7 +1962,8 @@ if (vol > 0.85) {
   riskScore += 1.5;
   riskFactors.push('Volatilitas tahunan sangat tinggi (' + (vol * 100).toFixed(0) + '%), ayunan harga lebar');
 } else if (vol < 0.45) {
-  mitigatingFactors.push('Volatilitas relatif stabil (' + (vol * 100).toFixed(0) + '%)');
+  riskScore -= 0.5;
+  mitigatingFactors.push('Volatilitas relatif stabil (' + (vol * 100).toFixed(0) + '%) [Skor -0.5]');
 }
 
 const isTrendBullish = currentPrice > (sma20val || 0) && macdVal.histogram > 0;
@@ -1970,10 +2003,12 @@ const dynTpPct = Number(Math.max(10.0, Math.min(25.0, dynSlPct * rrRatio)).toFix
 const dynTpPrice = currentPrice * (1 + dynTpPct / 100);
 const dynSlPrice = currentPrice * (1 - dynSlPct / 100);
 
-// 6. Kalkulasi Nominal Modal
+// 6. Kalkulasi Nominal Modal & Implied Portfolio Sizing (Van Tharp)
 const modal = coinCtx.modalArg || 100000;
 const maxLossNominal = Math.round(modal * (dynSlPct / 100));
 const potentialGainNominal = Math.round(modal * (dynTpPct / 100));
+const impliedEquity1Pct = Math.round(maxLossNominal / 0.01);
+const impliedEquity2Pct = Math.round(maxLossNominal / 0.02);
 
 const fmt = v => fmtPrice(v);
 
@@ -1996,12 +2031,12 @@ const msg = [
   '• Stop Loss Dinamis (-' + dynSlPct + '%): ' + fmt(dynSlPrice),
   '',
   '💵 <b>Simulasi Alokasi Terpilih (Modal ' + fmt(modal) + '):</b>',
-  '• Estimasi Kerugian jika SL: <b>-' + fmt(maxLossNominal) + '</b> (-' + dynSlPct + '%)',
-  '• Estimasi Keuntungan jika TP: <b>+' + fmt(potentialGainNominal) + '</b> (+' + dynTpPct + '%)',
+  '• Toleransi Rugi jika SL: <b>-' + fmt(maxLossNominal) + '</b> (-' + dynSlPct + '%)',
+  '• Potensi Untung jika TP: <b>+' + fmt(potentialGainNominal) + '</b> (+' + dynTpPct + '%)',
   '',
-  '📐 <b>Panduan Position Sizing Portofolio:</b>',
+  '📐 <b>Panduan Position Sizing Portofolio (Van Tharp):</b>',
   '• Porsi Alokasi Maksimal: <b>' + maxAllocPct + '</b> dari total modal portofolio trading lo',
-  '• Prinsip Keamanan: Membatasi dampak kerugian jika SL tersentuh agar risiko per transaksi tetap di bawah 1–2% total portofolio.',
+  '• Implikasi Modal Portofolio: Jika risiko transaksi ini dibatasi Rp ' + fmt(maxLossNominal) + ', total portofolio trading lo idealnya minimal <b>' + fmt(impliedEquity2Pct) + '</b> (aturan risiko 2%) s/d <b>' + fmt(impliedEquity1Pct) + '</b> (aturan risiko 1%).',
   '',
   '🛡️ <b>Sudut Pandang Risk-Taker (Skenario Agresif):</b>',
   (riskFactors.length ? '⚠️ <i>Peringatan Risiko:</i>\n' + riskFactors.map(f => '  - ' + f).join('\n') + '\n' : ''),
@@ -2270,11 +2305,12 @@ const nodes = [
   codeNode('B8002', 'Extract Buy Coin', code.extractBuyCoin, 620, 1200),
   ifNode('B8003', 'Is Buy Found?', '={{ $json.found }}', 860, 1200),
   tgSend('B8004', 'Send Buy Error', 1100, 1280),
-  httpGet('B8005', 'Fetch Buy Chart', "=https://api.coingecko.com/api/v3/coins/{{ $json.coinId }}/market_chart?vs_currency={{ $('Config').first().json.quoteCurrency }}&days=60", 1100, 1120, { onError: 'continueRegularOutput' }),
+  httpGet('B8005', 'Fetch Buy Chart', "=https://api.coingecko.com/api/v3/coins/{{ $json.coinId }}/market_chart?vs_currency={{ $('Config').first().json.quoteCurrency }}&days={{ $('Config').first().json.marketDays }}", 1100, 1120, { onError: 'continueRegularOutput' }),
   codeNode('B8006', 'Prepare Buy Exec', code.prepareBuyExec, 1340, 1120),
-  execNode('B8007', 'Execute Buy DB', '={{ $json.dbCmd }}', 1580, 1120),
-  codeNode('B8008', 'Format Buy Response', code.formatBuyResponse, 1820, 1120),
-  tgSend('B8009', 'Send Buy Confirm', 2060, 1120),
+  ifNode('B8006A', 'Is Buy Price OK?', '={{ $json.hasPrice }}', 1480, 1120),
+  execNode('B8007', 'Execute Buy DB', '={{ $json.dbCmd }}', 1680, 1120),
+  codeNode('B8008', 'Format Buy Response', code.formatBuyResponse, 1920, 1120),
+  tgSend('B8009', 'Send Buy Confirm', 2160, 1120),
   codeNode('B8101', 'Prepare Sell Query', code.prepareSellQuery, 380, 1450),
   execNode('B8102', 'Execute Sell Query', '={{ $json.dbCmd }}', 620, 1450),
   codeNode('B8103', 'Process Sell Check', code.processSellCheck, 860, 1450),
@@ -2290,7 +2326,7 @@ const nodes = [
   codeNode('B8203', 'Process Stat Position', code.processStatPosition, 860, 1700),
   ifNode('B8204', 'Is Stat Found?', '={{ $json.found }}', 1100, 1700),
   tgSend('B8205', 'Send Stat Error', 1340, 1780),
-  httpGet('B8206', 'Fetch Stat Chart', "=https://api.coingecko.com/api/v3/coins/{{ $json.coinId }}/market_chart?vs_currency={{ $('Config').first().json.quoteCurrency }}&days=60", 1340, 1620, { onError: 'continueRegularOutput' }),
+  httpGet('B8206', 'Fetch Stat Chart', "=https://api.coingecko.com/api/v3/coins/{{ $json.coinId }}/market_chart?vs_currency={{ $('Config').first().json.quoteCurrency }}&days={{ $('Config').first().json.marketDays }}", 1340, 1620, { onError: 'continueRegularOutput' }),
   codeNode('B8207', 'Build Stat Report', code.buildStatReport, 1580, 1620),
   tgSend('B8208', 'Send Stat Report', 1820, 1620),
   httpGet('B8301', 'CoinGecko Rec Markets', "=https://api.coingecko.com/api/v3/coins/markets?vs_currency={{ $('Config').first().json.quoteCurrency }}&order=market_cap_desc&per_page=100&page=1&price_change_percentage=24h,7d", 380, 1950, { onError: 'continueRegularOutput' }),
@@ -2308,8 +2344,8 @@ const nodes = [
   codeNode('K1002', 'Extract Risk Coin', code.extractRiskCoin, 620, -500),
   ifNode('K1003', 'Is Risk Coin Found?', '={{ $json.found }}', 860, -500),
   tgSend('K1004', 'Send Risk Error', 860, -660),
-  httpGet('K1005', 'CoinGecko Risk Market Chart', "=https://api.coingecko.com/api/v3/coins/{{ $json.coinId }}/market_chart?vs_currency={{ $('Config').first().json.quoteCurrency }}&days=60", 1100, -500, { onError: 'continueRegularOutput' }),
-  httpGet('K1006', 'Fetch BTC Gate Risk', "=https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency={{ $('Config').first().json.quoteCurrency }}&days=60", 1340, -500, { onError: 'continueRegularOutput' }),
+  httpGet('K1005', 'CoinGecko Risk Market Chart', "=https://api.coingecko.com/api/v3/coins/{{ $json.coinId }}/market_chart?vs_currency={{ $('Config').first().json.quoteCurrency }}&days={{ $('Config').first().json.marketDays }}", 1100, -500, { onError: 'continueRegularOutput' }),
+  httpGet('K1006', 'Fetch BTC Gate Risk', "=https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency={{ $('Config').first().json.quoteCurrency }}&days={{ $('Config').first().json.marketDays }}", 1340, -500, { onError: 'continueRegularOutput' }),
   codeNode('K1007', 'Calculate Risk Metrics', code.calculateRiskMetrics, 1580, -500),
   tgSend('K1008', 'Send Risk Report', 1820, -500),
   scheduleTrigger('C1001', 'Cron Every 30m', '*/30 * * * *', -1000, 2250),
@@ -2318,6 +2354,7 @@ const nodes = [
   codeNode('C1004', 'Format Cron Alerts', code.formatCronAlerts, -160, 2250),
   ifNode('C1005', 'Has Alerts?', '={{ $json.hasAlerts }}', 80, 2250),
   tgSend('C1006', 'Send Cron Alert', 320, 2250),
+  execNode('C1007', 'Ack Cron Alert', '={{ $json.ackCmd }}', 560, 2250),
 ];
 
 const connections = {
@@ -2402,7 +2439,11 @@ const connections = {
     [{ node: 'Send Buy Error', type: 'main', index: 0 }],
   ] },
   'Fetch Buy Chart':          { main: [[{ node: 'Prepare Buy Exec', type: 'main', index: 0 }]] },
-  'Prepare Buy Exec':         { main: [[{ node: 'Execute Buy DB', type: 'main', index: 0 }]] },
+  'Prepare Buy Exec':         { main: [[{ node: 'Is Buy Price OK?', type: 'main', index: 0 }]] },
+  'Is Buy Price OK?':         { main: [
+    [{ node: 'Execute Buy DB', type: 'main', index: 0 }],
+    [{ node: 'Send Buy Error', type: 'main', index: 0 }],
+  ] },
   'Execute Buy DB':           { main: [[{ node: 'Format Buy Response', type: 'main', index: 0 }]] },
   'Format Buy Response':      { main: [[{ node: 'Send Buy Confirm', type: 'main', index: 0 }]] },
 
@@ -2463,6 +2504,7 @@ const connections = {
     [{ node: 'Send Cron Alert', type: 'main', index: 0 }],
     [],
   ] },
+  'Send Cron Alert':          { main: [[{ node: 'Ack Cron Alert', type: 'main', index: 0 }]] },
 };
 
 const workflow = {
