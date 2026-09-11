@@ -2,7 +2,7 @@
 
 **Luna Hernandez** adalah asisten riset dan pendukung keputusan (*decision support*) cryptocurrency personal berbasis AI yang dirancang khusus untuk swing trader di Indonesia (target profit mingguan hingga bulanan).
 
-Bot ini terintegrasi langsung dengan **Telegram Webhook Realtime (0 delay)**, ditenagai oleh **n8n workflow automation**, **Google Gemini 2.5 Flash**, **CoinGecko Market API**, **Google News Live Search**, dan database lokal **SQLite**.
+Bot ini terintegrasi langsung dengan **Telegram Webhook Realtime (0 delay)**, ditenagai oleh **n8n workflow automation**, **Google Gemini 3.5 Flash Lite**, **CoinGecko Market API**, **Google News Live Search**, dan database lokal **SQLite**.
 
 > 📐 **Whitepaper Matematis & Algoritma:**  
 > Untuk penjelasan mendalam mengenai seluruh formula indikator (RSI, MACD, BB, ATR, ADX), sistem scoring, BTC Gate, Dynamic TP/SL, dan sizing modal, silakan baca **[Calculations.md](Calculations.md)**.
@@ -16,7 +16,7 @@ Bot ini terintegrasi langsung dengan **Telegram Webhook Realtime (0 delay)**, di
 - **Dynamic TP & SL Engine:** Target TP (+10% s/d +25%) dan Stop Loss (-4.5% s/d -8.5%) dihitung adaptif terhadap volatilitas ATR koin dengan jaminan rasio **$R:R \ge 1 : 2.0$**.
 - **BTC Macro Gate:** Sinyal makro Bitcoin (*Bullish*, *Bearish*, atau *Netral*) untuk memvalidasi apakah pasar umum mendukung entri altcoin.
 - **Live Google News:** Browsing 10 artikel berita live terbaru secara otomatis untuk mendeteksi katalis fundamental dan narasi pasar terkini.
-- **Sintesis Dual-Skenario Gemini 2.5:** Memberikan skenario Konservatif vs. Agresif (Risk-Taker) secara objektif tanpa bahasa patronizing atau larangan kaku (*no rigid "dilarang"*).
+- **Sintesis Dual-Skenario Gemini 3.5 Flash Lite:** Memberikan skenario Konservatif vs. Agresif (Risk-Taker) secara objektif tanpa bahasa patronizing atau larangan kaku (*no rigid "dilarang"*).
 
 ### 2. ⚡ Kalkulator Risiko & Tactical Position Sizing (`/risk <simbol> [modal]`)
 - **Skor Risiko Komposit (1.0 – 10.0):** Mengukur tingkat bahaya pasar berbasis makro BTC, posisi band Bollinger (%B), overbought/oversold, dan deviasi SMA20.
@@ -82,7 +82,7 @@ Cloudflare Tunnel (Quick Tunnel)
 Docker n8n Engine (Workflow: Luna Hernandez)
      ├── CoinGecko API (Market Chart, Simple Price, Markets)
      ├── Google News RSS (Live Real-Time Browsing)
-     ├── Gemini 2.5 Flash (AI Dual-Scenario Synthesis)
+     ├── Gemini 3.5 Flash Lite (AI Dual-Scenario Synthesis)
      ├── Quantitative Core (RSI, MACD, BB, ATR, ADX, Dynamic TP/SL)
      └── SQLite Database (manage_positions.mjs & crypto_decision_support.sqlite)
 ```
