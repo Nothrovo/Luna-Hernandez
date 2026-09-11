@@ -1,0 +1,9 @@
+{
+  "name": "midas-luna-workflow",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build-bot.mjs",
+    "test": "node build-bot.mjs && node --test tests/*.test.mjs"
+  }
+}

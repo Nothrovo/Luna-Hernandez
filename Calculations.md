@@ -247,8 +247,8 @@ Bot menggunakan **ATR Relatif ($\text{ATR}\%$)** untuk menetapkan level exit yan
    - *Batas Atas (25.0%):* Mengunci target rasional pada fase *swing trading* (tidak muluk-muluk/berkhayal).
 
 4. **Kalkulasi Level Harga Nominal (IDR):**
-   $$\text{Price}_{\text{TP}} = \text{round}\Big( C_t \times (1 + \frac{\text{dynTpPct}}{100}) \Big)$$
-   $$\text{Price}_{\text{SL}} = \text{round}\Big( C_t \times (1 - \frac{\text{dynSlPct}}{100}) \Big)$$
+   $$\text{Price}_{\text{TP}} = C_t \times (1 + \frac{\text{dynTpPct}}{100})$$
+   $$\text{Price}_{\text{SL}} = C_t \times (1 - \frac{\text{dynSlPct}}{100})$$
 
 > [!NOTE]
 > **Jaminan Matematis:** Dengan formula ini, rasio $\frac{\text{dynTpPct}}{\text{dynSlPct}}$ dijamin **selalu $\ge 2.0$**, sehingga trader memiliki keunggulan matematis positif (*positive expectancy*) bahkan dengan *win-rate* 40%.

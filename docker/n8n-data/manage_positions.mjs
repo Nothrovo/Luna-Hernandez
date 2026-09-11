@@ -11,8 +11,8 @@ const dbPath = process.env.SQLITE_PATH || '/home/node/.n8n/crypto_decision_suppo
 const db = new DatabaseSync(dbPath);
 
 db.exec(`
-  PRAGMA journal_mode = WAL;
   PRAGMA busy_timeout = 5000;
+  PRAGMA journal_mode = WAL;
 `);
 
 // 1. Inisialisasi tabel dasar
@@ -43,7 +43,7 @@ CREATE TABLE IF NOT EXISTS position_transactions (
   position_id INTEGER,
   simbol TEXT NOT NULL,
   coin_id TEXT NOT NULL,
-  tipe TEXT NOT NULL, -- BUY, DCA_AVERAGE_UP, DCA_AVERAGE_DOWN, PARTIAL_SELL, CLOSE_SELL, MERGE_DCA
+  tipe TEXT NOT NULL, -- BUY, DCA_AVERAGE_UP, DCA_AVERAGE_DOWN, PARTIAL_SELL, CLOSE_SELL, MIGRATION_MERGE
   tanggal TEXT NOT NULL,
   waktu TEXT NOT NULL,
   harga REAL NOT NULL,
@@ -56,8 +56,16 @@ CREATE TABLE IF NOT EXISTS position_transactions (
 );
 `);
 
-// 2. Migrasi skema kolom jika tabel lama belum lengkap
-try {
+// 2-4. Semua migrasi startup berjalan dalam satu write lock agar aman saat
+// beberapa proses manager mulai bersamaan pada database lama yang sama.
+withTx(() => {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS schema_migrations (
+      name TEXT PRIMARY KEY,
+      applied_at TEXT NOT NULL
+    );
+  `);
+
   const cols = db.prepare("PRAGMA table_info(user_positions)").all().map(c => c.name);
   const expectedCols = ['quantity', 'tanggal_jual', 'harga_jual', 'pnl_persen', 'pnl_idr', 'tp_alerted_at', 'sl_alerted_at'];
   for (const col of expectedCols) {
@@ -67,12 +75,97 @@ try {
     }
   }
   db.exec("UPDATE user_positions SET quantity = modal_idr / harga_beli WHERE (quantity IS NULL OR quantity = 0) AND harga_beli > 0;");
-} catch (e) {
-  // Ignored if already migrated
-}
 
-// 3. Self-healing migration: Rekonsiliasi posisi duplikat lama sebelum membuat unique index
-try {
+  // Migrasi lama mencatat MERGE_DCA sebagai tambahan modal. Normalisasi event
+  // tersebut menjadi audit bernilai nol supaya agregasi ledger tidak dobel.
+  const normalizationName = 'normalize_legacy_merge_dca_v2';
+  const alreadyNormalized = db.prepare('SELECT 1 FROM schema_migrations WHERE name = ?').get(normalizationName);
+  if (!alreadyNormalized) {
+    const legacyRows = db.prepare(`
+      SELECT * FROM position_transactions
+      WHERE tipe = 'MERGE_DCA'
+        AND notes = 'Consolidated duplicate pre-migration position'
+      ORDER BY id
+    `).all();
+    const legacyGroups = new Map();
+    for (const row of legacyRows) {
+      const key = `${row.position_id}:${row.coin_id}`;
+      if (!legacyGroups.has(key)) legacyGroups.set(key, []);
+      legacyGroups.get(key).push(row);
+    }
+
+    for (const group of legacyGroups.values()) {
+      const sample = group[0];
+      const recoveredIds = [];
+      const candidates = db.prepare(`
+        SELECT p.* FROM user_positions p
+        WHERE p.coin_id = ? AND p.id != ? AND p.status = 'CLOSED'
+          AND p.harga_jual = p.harga_beli
+          AND NOT EXISTS (
+            SELECT 1 FROM position_transactions t
+            WHERE t.position_id = p.id AND t.tipe = 'CLOSE_SELL'
+          )
+      `).all(sample.coin_id, sample.position_id);
+
+      for (const candidate of candidates) {
+        const matchesLegacyLeg = group.some(row =>
+          nearlyEqual(row.harga, candidate.harga_beli)
+          && nearlyEqual(row.modal_idr, candidate.modal_idr)
+          && nearlyEqual(row.quantity, candidate.quantity)
+        );
+        if (!matchesLegacyLeg) continue;
+
+        db.prepare('UPDATE position_transactions SET position_id = ? WHERE position_id = ?')
+          .run(sample.position_id, candidate.id);
+        db.prepare(`
+          UPDATE user_positions
+          SET status = 'MERGED', tanggal_jual = NULL, harga_jual = NULL,
+              pnl_persen = NULL, pnl_idr = NULL, tp_alerted_at = NULL, sl_alerted_at = NULL
+          WHERE id = ?
+        `).run(candidate.id);
+        recoveredIds.push(Number(candidate.id));
+      }
+
+      const canonical = db.prepare('SELECT * FROM user_positions WHERE id = ?').get(sample.position_id);
+      if (canonical) {
+        const entry = Number(canonical.harga_beli);
+        db.prepare(`
+          UPDATE user_positions
+          SET target_profit = ?, stop_loss = ?, tp_alerted_at = NULL, sl_alerted_at = NULL
+          WHERE id = ?
+        `).run(
+          entry * (1 + validTargetPct(canonical)),
+          entry * (1 - validStopPct(canonical)),
+          canonical.id,
+        );
+      }
+
+      db.prepare(`
+        DELETE FROM position_transactions
+        WHERE position_id = ? AND coin_id = ? AND tipe = 'MERGE_DCA'
+          AND notes = 'Consolidated duplicate pre-migration position'
+      `).run(sample.position_id, sample.coin_id);
+      db.prepare(`
+        INSERT INTO position_transactions
+          (position_id, simbol, coin_id, tipe, tanggal, waktu, harga, modal_idr, quantity, notes)
+        VALUES (?, ?, ?, 'MIGRATION_MERGE', ?, ?, ?, 0, 0, ?)
+      `).run(
+        sample.position_id,
+        sample.simbol,
+        sample.coin_id,
+        sample.tanggal,
+        sample.waktu,
+        sample.harga,
+        `Normalized legacy merge audit; recovered position ids: ${recoveredIds.join(', ') || 'none'}`,
+      );
+    }
+
+    db.prepare('INSERT INTO schema_migrations (name, applied_at) VALUES (?, ?)')
+      .run(normalizationName, new Date().toISOString());
+  }
+
+  // Satukan posisi ACTIVE duplikat tanpa menciptakan arus modal baru. Transaksi
+  // historis direlasikan ulang ke posisi kanonis (baris ACTIVE tertua).
   const dups = db.prepare(`
     SELECT coin_id FROM user_positions WHERE status = 'ACTIVE' GROUP BY coin_id HAVING COUNT(*) > 1
   `).all();
@@ -84,29 +177,59 @@ try {
       const primary = rows[0];
       let totalModal = Number(primary.modal_idr);
       let totalQty = Number(primary.quantity) || (totalModal / Number(primary.harga_beli));
-      const now = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta' }).format(new Date());
+      let weightedTpPct = totalModal * validTargetPct(primary);
+      let weightedSlPct = totalModal * validStopPct(primary);
+      const mergedIds = [];
       for (let i = 1; i < rows.length; i++) {
         const dup = rows[i];
         const dupModal = Number(dup.modal_idr);
         const dupQty = Number(dup.quantity) || (dupModal / Number(dup.harga_beli));
         totalModal += dupModal;
         totalQty += dupQty;
-        db.prepare("UPDATE user_positions SET status = 'CLOSED', tanggal_jual = ?, harga_jual = harga_beli WHERE id = ?").run(now, dup.id);
+        weightedTpPct += dupModal * validTargetPct(dup);
+        weightedSlPct += dupModal * validStopPct(dup);
+        mergedIds.push(Number(dup.id));
+
+        db.prepare('UPDATE position_transactions SET position_id = ? WHERE position_id = ?').run(primary.id, dup.id);
         db.prepare(`
-          INSERT INTO position_transactions (position_id, simbol, coin_id, tipe, tanggal, waktu, harga, modal_idr, quantity, notes)
-          VALUES (?, ?, ?, 'MERGE_DCA', ?, '00.00', ?, ?, ?, 'Consolidated duplicate pre-migration position')
-        `).run(primary.id, primary.simbol, coin_id, now, dup.harga_beli, dupModal, dupQty);
+          UPDATE user_positions
+          SET status = 'MERGED', tanggal_jual = NULL, harga_jual = NULL,
+              pnl_persen = NULL, pnl_idr = NULL, tp_alerted_at = NULL, sl_alerted_at = NULL
+          WHERE id = ?
+        `).run(dup.id);
       }
+
       const avgPrice = totalModal / totalQty;
-      db.prepare("UPDATE user_positions SET modal_idr = ?, quantity = ?, harga_beli = ? WHERE id = ?").run(totalModal, totalQty, avgPrice, primary.id);
+      const targetProfit = avgPrice * (1 + weightedTpPct / totalModal);
+      const stopLoss = avgPrice * (1 - weightedSlPct / totalModal);
+      db.prepare(`
+        UPDATE user_positions
+        SET modal_idr = ?, quantity = ?, harga_beli = ?, target_profit = ?, stop_loss = ?,
+            tp_alerted_at = NULL, sl_alerted_at = NULL
+        WHERE id = ?
+      `).run(totalModal, totalQty, avgPrice, targetProfit, stopLoss, primary.id);
+
+      const { tanggal, waktu } = nowTime();
+      db.prepare(`
+        INSERT INTO position_transactions
+          (position_id, simbol, coin_id, tipe, tanggal, waktu, harga, modal_idr, quantity, notes)
+        VALUES (?, ?, ?, 'MIGRATION_MERGE', ?, ?, ?, 0, 0, ?)
+      `).run(
+        primary.id,
+        primary.simbol,
+        coin_id,
+        tanggal,
+        waktu,
+        avgPrice,
+        `Consolidated legacy position ids: ${mergedIds.join(', ')}`,
+      );
     }
   }
-} catch (e) {
-  // Ignored if table is fresh
-}
 
-// 4. Buat unique partial index setelah rekonsiliasi dipastikan bersih
-db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_active_coin ON user_positions (coin_id) WHERE status = 'ACTIVE';");
+  db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_active_coin ON user_positions (coin_id) WHERE status = 'ACTIVE';");
+  db.prepare('INSERT OR IGNORE INTO schema_migrations (name, applied_at) VALUES (?, ?)')
+    .run('active_coin_unique_v2', new Date().toISOString());
+});
 
 const [,, command, ...args] = process.argv;
 
@@ -157,16 +280,75 @@ function withTx(fn) {
   }
 }
 
+function validTargetPct(position) {
+  const entry = Number(position.harga_beli);
+  const target = Number(position.target_profit);
+  const pct = entry > 0 && target > entry ? (target - entry) / entry : 0.12;
+  return Number.isFinite(pct) && pct > 0 ? pct : 0.12;
+}
+
+function validStopPct(position) {
+  const entry = Number(position.harga_beli);
+  const stop = Number(position.stop_loss);
+  const pct = entry > 0 && stop > 0 && stop < entry ? (entry - stop) / entry : 0.06;
+  return Number.isFinite(pct) && pct > 0 && pct < 1 ? pct : 0.06;
+}
+
+function parsePositiveDecimal(raw) {
+  const value = String(raw ?? '').trim();
+  if (!/^(?:\d+(?:\.\d+)?|\.\d+)$/.test(value)) return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function nearlyEqual(left, right) {
+  const a = Number(left);
+  const b = Number(right);
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return false;
+  return Math.abs(a - b) <= Number.EPSILON * Math.max(1, Math.abs(a), Math.abs(b)) * 8;
+}
+
+function parseIdrAmount(raw) {
+  const input = String(raw ?? '').trim().toLowerCase();
+  if (!input) return null;
+
+  const match = input.match(/^(.*?)(k|rb|ribu|jt|juta|m)?$/);
+  if (!match) return null;
+
+  const numberPart = match[1];
+  const suffix = match[2] || '';
+  let numericValue;
+
+  if (suffix) {
+    if (!/^\d+(?:[.,]\d+)?$/.test(numberPart)) return null;
+    numericValue = Number(numberPart.replace(',', '.'));
+  } else if (/^\d+$/.test(numberPart)) {
+    numericValue = Number(numberPart);
+  } else if (/^\d{1,3}(?:[.,]\d{3})+$/.test(numberPart)) {
+    numericValue = Number(numberPart.replace(/[.,]/g, ''));
+  } else {
+    return null;
+  }
+
+  const multiplier = ['k', 'rb', 'ribu'].includes(suffix)
+    ? 1_000
+    : ['jt', 'juta', 'm'].includes(suffix)
+      ? 1_000_000
+      : 1;
+  const amount = numericValue * multiplier;
+  return Number.isFinite(amount) && amount > 0 ? amount : null;
+}
+
 (async () => {
   try {
     if (command === 'buy') {
       const [simbolRaw, coinIdRaw, nama, hargaStr, modalStr, tpStr, slStr] = args;
       const simbol = (simbolRaw || '').toUpperCase().trim();
       const coinId = (coinIdRaw || '').toLowerCase().trim();
-      const hargaBeli = parseFloat(hargaStr);
-      const modalIdr = parseFloat(modalStr);
-      const tpPrice = parseFloat(tpStr) || (hargaBeli * 1.12);
-      const slPrice = parseFloat(slStr) || (hargaBeli * 0.94);
+      const hargaBeli = parsePositiveDecimal(hargaStr);
+      const modalIdr = parsePositiveDecimal(modalStr);
+      const tpPrice = tpStr == null ? (hargaBeli * 1.12) : parsePositiveDecimal(tpStr);
+      const slPrice = slStr == null ? (hargaBeli * 0.94) : parsePositiveDecimal(slStr);
       
       if (!simbol || !Number.isFinite(hargaBeli) || hargaBeli <= 0) {
         console.log(JSON.stringify({ success: false, error: 'INVALID_ARGS', message: 'Harga beli harus positif dan valid' }));
@@ -176,8 +358,8 @@ function withTx(fn) {
         console.log(JSON.stringify({ success: false, error: 'INVALID_ARGS', message: 'Nominal modal harus positif dan valid' }));
         process.exit(0);
       }
-      if (!Number.isFinite(tpPrice) || tpPrice <= 0 || !Number.isFinite(slPrice) || slPrice <= 0) {
-        console.log(JSON.stringify({ success: false, error: 'INVALID_ARGS', message: 'Target profit dan stop loss harus positif dan valid' }));
+      if (!Number.isFinite(tpPrice) || tpPrice <= hargaBeli || !Number.isFinite(slPrice) || slPrice <= 0 || slPrice >= hargaBeli) {
+        console.log(JSON.stringify({ success: false, error: 'INVALID_ARGS', message: 'Untuk posisi long, target profit harus di atas harga beli dan stop loss harus di bawah harga beli' }));
         process.exit(0);
       }
       
@@ -274,7 +456,7 @@ function withTx(fn) {
     } else if (command === 'sell') {
       const [simbolRaw, currentPriceStr, porsiStr, coinIdArg] = args;
       const simbol = (simbolRaw || '').toUpperCase().trim();
-      const currentPrice = parseFloat(currentPriceStr);
+      const currentPrice = parsePositiveDecimal(currentPriceStr);
       const coinId = (coinIdArg || '').toLowerCase().trim();
       
       if (!currentPrice || currentPrice <= 0 || !Number.isFinite(currentPrice)) {
@@ -315,7 +497,7 @@ function withTx(fn) {
         
         if (pRaw && pRaw !== 'all' && pRaw !== '100%') {
           const pctMatch = pRaw.match(/^(\d+(\.\d+)?)%$/);
-          const nomMatch = pRaw.match(/^(\d+(\.\d+)?)(k)?$/i);
+          const parsedNom = parseIdrAmount(pRaw);
           
           if (pctMatch) {
             const pct = parseFloat(pctMatch[1]);
@@ -333,12 +515,9 @@ function withTx(fn) {
               sellRatio = 1.0;
               isPartial = false;
             }
-          } else if (nomMatch) {
-            let nom = parseFloat(nomMatch[1]);
-            if (nomMatch[3]) {
-              nom *= 1000;
-            }
-            if (!Number.isFinite(nom) || nom <= 0 || nom > totalModal) {
+          } else if (parsedNom != null) {
+            const nom = parsedNom;
+            if (nom > totalModal) {
               return { 
                 success: false, 
                 error: 'INVALID_PORTION', 
@@ -356,7 +535,7 @@ function withTx(fn) {
             return { 
               success: false, 
               error: 'INVALID_PORTION', 
-              message: `Porsi atau nominal jual "${porsiStr}" tidak valid. Format yang didukung: persentase (misal: 25%, 50%, 100%, all) atau nominal (misal: 50k, 100000).` 
+              message: `Porsi atau nominal jual "${porsiStr}" tidak valid. Format yang didukung: persentase (misal: 25%, 50%, 100%, all) atau nominal (misal: 50k, 1,5jt, 100.000).` 
             };
           }
         }

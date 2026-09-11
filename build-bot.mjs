@@ -1,4 +1,7 @@
 import { writeFileSync, copyFileSync } from 'node:fs';
+import { parseIdrAmount } from './lib/parse-idr-amount.mjs';
+
+const PARSE_IDR_AMOUNT_SOURCE = parseIdrAmount.toString();
 
 // ═══════════════════════════════════════════════════════════════
 // KODE HELPER MATEMATIKA TEKNIKAL
@@ -230,7 +233,9 @@ const code = {
   },
 }];`,
 
-  parseWebhook: String.raw`const cfg = $('Config').first().json;
+  parseWebhook: String.raw`${PARSE_IDR_AMOUNT_SOURCE}
+
+const cfg = $('Config').first().json;
 const raw = $('Telegram Webhook').first().json;
 
 // Ekstrak pesan Telegram dari berbagai struktur webhook n8n
@@ -273,12 +278,9 @@ if (args) {
   coinArg = parts[0] ? parts[0].trim().toUpperCase() : '';
   if (parts[1]) {
     porsiArg = parts[1].trim();
-    let m = parts[1].toLowerCase().replace(/[,._]/g, '');
-    if (m.endsWith('k')) m = parseFloat(m) * 1000;
-    else if (m.endsWith('jt') || m.endsWith('m') || m.endsWith('juta')) m = parseFloat(m) * 1000000;
-    else m = parseFloat(m);
-    if (Number.isFinite(m) && m > 0) {
-      modalArg = m;
+    const parsedModal = parseIdrAmount(parts[1]);
+    if (parsedModal != null) {
+      modalArg = parsedModal;
     } else {
       invalidModal = parts[1].trim();
     }
@@ -1702,7 +1704,9 @@ function timeAgo(pubDateStr) {
 const itemBlocks = [...xml.matchAll(/<item>([\s\S]*?)<\/item>/g)];
 const articles = [];
 
-for (const m of itemBlocks.slice(0, 12)) {
+const maxAgeMs = 48 * 60 * 60 * 1000;
+const nowMs = Date.now();
+for (const m of itemBlocks.slice(0, 30)) {
   const c = m[1];
   let rawTitle = (c.match(/<title><!\[CDATA\[([\s\S]*?)\]\]>/) || c.match(/<title>([\s\S]*?)<\/title>/))?.[1] || '';
   rawTitle = decodeHtml(rawTitle);
@@ -1717,6 +1721,9 @@ for (const m of itemBlocks.slice(0, 12)) {
   }
 
   const pubDate = (c.match(/<pubDate>([\s\S]*?)<\/pubDate>/))?.[1] || '';
+  const publishedAt = new Date(pubDate).getTime();
+  const ageMs = nowMs - publishedAt;
+  if (!Number.isFinite(publishedAt) || ageMs < -10 * 60 * 1000 || ageMs > maxAgeMs) continue;
   const timeLabel = timeAgo(pubDate);
 
   if (rawTitle.length > 5) {

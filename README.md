@@ -25,7 +25,7 @@ Bot ini terintegrasi langsung dengan **Telegram Webhook Realtime (0 delay)**, di
 - **Tactical Sizing & Risk-Taker POV:** Panduan alokasi portofolio (% modal) dan taktik eksekusi (cicil DCA, batas SL ketat) bagi trader agresif.
 
 ### 3. 📰 Headline Berita Live & Analisis Sentimen AI (`/news <simbol>`)
-- Menampilkan daftar headline berita terhangat (24-48 jam terakhir) langsung dari Google News RSS.
+- Menampilkan daftar headline yang terbit dalam maksimal 48 jam terakhir langsung dari Google News RSS.
 - Dilengkapi ringkasan sentimen, potensi katalis, dan risiko regulasi/pasar oleh AI.
 - Contoh: `/news sol`, `/news btc`, atau `/news` untuk pasar global.
 
@@ -39,7 +39,7 @@ Bot ini terintegrasi langsung dengan **Telegram Webhook Realtime (0 delay)**, di
 - Otomatis melakukan riset berita live Google News dan mengingat konteks percakapan sebelumnya via database SQLite lokal.
 
 ### 6. 💼 Manajemen Portofolio & Posisi Aktif
-- **`/buy <simbol> [modal]`**: Catat entri posisi dengan modal fleksibel (contoh: `/buy sol 150k`, `/buy btc 200000`, atau default Rp 100.000). Mendukung **Auto-DCA / Average Down** berbobot jika koin sudah ada di portofolio.
+- **`/buy <simbol> [modal]`**: Catat entri posisi dengan modal fleksibel (contoh: `/buy sol 150k`, `/buy btc 1,5jt`, `/buy btc 200000`, atau default Rp 100.000). Mendukung **Auto-DCA / Average Down** berbobot jika koin sudah ada di portofolio.
 - **`/stat <simbol>`**: Evaluasi posisi aktif — menghitung floating PnL realtime, sisa jarak ke TP dinamis, toleransi ke SL dinamis, dan rekomendasi tindakan (*Hold*, *Take Profit*, *Cut Loss*, atau *DCA*).
 - **`/sell <simbol> [porsi]`**: Menutup posisi (penuh atau parsial, misal: `/sell tia 50%`) di harga pasar saat ini, menghitung realized PnL (% dan Rp), merekap pengembalian modal, dan mencatat mutasi ke audit ledger `position_transactions`.
 - **`/portfolio`**: Ringkasan dinamis koin aktif, total modal teralokasi, estimasi nilai portofolio, total floating PnL, dan status tren makro BTC.
@@ -90,6 +90,10 @@ Docker n8n Engine (Workflow: Luna Hernandez)
 ---
 
 ## 🛠️ Panduan Instalasi & Menjalankan
+
+### Regression test
+
+Jalankan `npm test` untuk memverifikasi parser nominal, migrasi database legacy, serta konsistensi BUY/SELL ketika beberapa proses berjalan paralel.
 
 ### 1. Prasyarat
 - Docker & Docker Compose
