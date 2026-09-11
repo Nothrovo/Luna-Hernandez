@@ -123,7 +123,7 @@ const series = [...daily.values()].sort((a, b) => a.ts - b.ts);
 const prices = series.map(p => p.price);
 const highs = series.map(p => p.high);
 const lows = series.map(p => p.low);
-if (prices.length < 14) throw new Error(assetSymbol + ': data tidak cukup (min 14 titik harian)');
+if (prices.length < 35) throw new Error(assetSymbol + ': data tidak cukup (min 35 titik harian)');
 
 const rsiPeriod = Math.min(14, prices.length - 1);
 const currentPrice = prices.at(-1);
@@ -1192,6 +1192,15 @@ try {
   res = JSON.parse(raw);
 } catch (e) {}
 
+if (res && res.ambiguous) {
+  const list = (res.positions || []).map(p => '• <code>' + p.coin_id + '</code> (' + p.nama + ')').join('\n');
+  return [{ json: {
+    found: false,
+    telegramMessage: '⚠️ <b>Simbol Ambigu: ' + sellInit.sym + '</b>\n\nDitemukan lebih dari 1 posisi aktif dengan simbol ini:\n' + list + '\n\nSilakan jalankan perintah dengan <code>coin_id</code> spesifik:\nContoh: <code>/sell ' + (res.positions[0]?.coin_id || 'coin_id') + ' ' + (sellInit.porsiArg || '') + '</code>',
+    chatId: cfg.telegramChatId, botToken: cfg.botToken,
+  }}];
+}
+
 if (!res || !res.found || !res.position) {
   return [{ json: {
     found: false,
@@ -1281,7 +1290,7 @@ if (res.isPartial) {
     '',
     '📊 <b>Hasil Realized PnL:</b>',
     pnlIcon + ' ' + (isProfit ? '+' : '') + res.pnlPct + '% (' + pnlWord + ' ' + fmt(Math.abs(res.pnlIdr)) + ')',
-    '💵 <b>Total Dana Kembali:</b> ' + fmt(res.totalReturn) + ' (Modal ' + fmt(res.modalIdr) + ')',
+    '💵 <b>Total Dana Kembali:</b> ' + fmt(res.totalReturn) + ' (Modal ' + fmt(res.modalIdr || res.modalAwal) + ')',
     '',
     '<i>Koin telah dikeluarkan dari daftar pantauan aktif dan disimpan ke ledger audit.</i>',
   ].join('\n');
@@ -1318,6 +1327,15 @@ let res = null;
 try {
   res = JSON.parse(raw);
 } catch (e) {}
+
+if (res && res.ambiguous) {
+  const list = (res.positions || []).map(p => '• <code>' + p.coin_id + '</code> (' + p.nama + ')').join('\n');
+  return [{ json: {
+    found: false,
+    telegramMessage: '⚠️ <b>Simbol Ambigu: ' + statInit.sym + '</b>\n\nDitemukan lebih dari 1 posisi aktif dengan simbol ini:\n' + list + '\n\nSilakan jalankan perintah dengan <code>coin_id</code> spesifik:\nContoh: <code>/stat ' + (res.positions[0]?.coin_id || 'coin_id') + '</code>',
+    chatId: cfg.telegramChatId, botToken: cfg.botToken,
+  }}];
+}
 
 if (!res || !res.found || !res.position) {
   return [{ json: {
@@ -1880,9 +1898,9 @@ for (const row of rawPrices) {
   }
 }
 const series = [...daily.values()].sort((a, b) => a.ts - b.ts);
-if (series.length < 15) {
+if (series.length < 35) {
   return [{ json: {
-    telegramMessage: '⚠️ Data candle historis untuk <b>' + coinCtx.coinSymbol + ' (' + coinCtx.coinName + ')</b> hanya tersedia ' + series.length + ' hari (minimal 15 hari diperlukan untuk kalkulasi RSI, MACD, Bollinger Bands, dan ATR).\n\nSilakan analisa koin dengan riwayat pasar yang lebih matang.',
+    telegramMessage: '⚠️ Data candle historis untuk <b>' + coinCtx.coinSymbol + ' (' + coinCtx.coinName + ')</b> hanya tersedia ' + series.length + ' hari (minimal 35 hari diperlukan untuk kalkulasi RSI, MACD, Bollinger Bands, dan ATR).\n\nSilakan analisa koin dengan riwayat pasar yang lebih matang.',
     chatId: coinCtx.chatId,
     botToken: coinCtx.botToken,
   }}];
@@ -2354,7 +2372,8 @@ const nodes = [
   codeNode('C1004', 'Format Cron Alerts', code.formatCronAlerts, -160, 2250),
   ifNode('C1005', 'Has Alerts?', '={{ $json.hasAlerts }}', 80, 2250),
   tgSend('C1006', 'Send Cron Alert', 320, 2250),
-  execNode('C1007', 'Ack Cron Alert', '={{ $json.ackCmd }}', 560, 2250),
+  ifNode('C1006A', 'Is Telegram Send OK?', '={{ $json.ok === true }}', 560, 2250),
+  execNode('C1007', 'Ack Cron Alert', "={{ $('Format Cron Alerts').first().json.ackCmd || 'echo ok' }}", 800, 2250),
 ];
 
 const connections = {
@@ -2504,7 +2523,11 @@ const connections = {
     [{ node: 'Send Cron Alert', type: 'main', index: 0 }],
     [],
   ] },
-  'Send Cron Alert':          { main: [[{ node: 'Ack Cron Alert', type: 'main', index: 0 }]] },
+  'Send Cron Alert':          { main: [[{ node: 'Is Telegram Send OK?', type: 'main', index: 0 }]] },
+  'Is Telegram Send OK?':     { main: [
+    [{ node: 'Ack Cron Alert', type: 'main', index: 0 }],
+    [],
+  ] },
 };
 
 const workflow = {

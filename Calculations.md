@@ -14,7 +14,7 @@ Untuk mengatasi kelemahan tersebut, arsitektur bot dibangun atas dua pilar yang 
 
 1. **Mesin Kuantitatif Deterministik (JavaScript Core Engine)**  
    Semua kalkulasi angka, indikator teknikal, skor komposit, safety gate makro BTC, dynamic stop loss, target take profit, serta *position sizing* dihitung secara deterministik dan matematis murni. Mesin ini tidak dapat dihalusinasi oleh LLM dan menjamin rasio *Risk-to-Reward* ($R:R$) selalu menguntungkan ($\ge 1 : 2.0$).
-2. **Mesin Penalaran Sintetis & Sentimen (Google Gemini 2.5 Flash + Google News Live)**  
+2. **Mesin Penalaran Sintetis & Sentimen (Google Gemini 3.5 Flash Lite + Google News Live)**  
    AI tidak diizinkan membuat keputusan beli/jual dari ketiadaan atau menghitung angka sembarangan. AI menerima hasil komputasi deterministik, 10 artikel Google News real-time terbaru, dan histori evaluasi sebelumnya. AI bertugas menguji hipotesis, mendeteksi katalis fundamental, menyajikan skenario pasar (Konservatif vs. Agresif/Risk-Taker), dan memberikan peringatan risiko yang objektif tanpa larangan kaku (*no rigid "dilarang"*).
 
 ---
@@ -317,11 +317,17 @@ $$\text{PnL}_{\text{IDR}} = M_{\text{total}} \times \left( \frac{\text{PnL}\%}{1
 
 Jika salah satu atau beberapa koin mengalami kegagalan feed harga live (`priceData` null/stale), sistem mengisolasi posisi tersebut dan menampilkan **Valuasi Parsial**. Nilai total portofolio dan floating PnL hanya menghitung koin-koin dengan feed harga live valid, dan menandai total agregat secara transparan tanpa mengasumsikan PnL 0% semu.
 
-### 8.2. Dollar-Cost Averaging & Identitas Kanonikal (`coin_id`)
+### 8.2. Dollar-Cost Averaging, Konkurensi Atomik, & Identitas Kanonikal (`coin_id`)
 Jika pengguna menambah alokasi modal pada koin yang sudah ada (`/buy <simbol> [modal]` ulang):
-1. **Identitas Kanonikal Aset:**
-   Posisi aktif dicocokkan menggunakan `coin_id` unik CoinGecko (misal: `solana`, `bittensor`), bukan sekadar simbol ticker, guna mengeliminasi risiko tabrakan nama token (*ticker collision*).
-2. **Harga Rata-Rata Unit-Weighted Harmonic Average:**
+1. **Identitas Kanonikal Aset & Partial Unique Index:**
+   Posisi aktif diidentifikasi menggunakan `coin_id` unik CoinGecko (misal: `celestia`, `bittensor`). Skema basis data SQLite menerapkan indeks unik parsial:
+   ```sql
+   CREATE UNIQUE INDEX IF NOT EXISTS idx_active_coin ON user_positions (coin_id) WHERE status = 'ACTIVE';
+   ```
+   Indeks ini secara deterministik menjamin tidak ada duplikasi posisi aktif untuk satu aset yang sama, bahkan jika terjadi *request race conditions*.
+2. **Kunci Transaksi Segera (`BEGIN IMMEDIATE`):**
+   Seluruh siklus pemeriksaan posisi (`SELECT`), kalkulasi harmonic average, hingga mutasi posisi dan pencatatan audit *ledger* dibungkus dalam fungsi atomik `withTx()` menggunakan `BEGIN IMMEDIATE`. Hal ini menjamin proses konkuren dieksekusi secara serial di level *database lock*, sehingga proses kedua otomatis membaca posisi baru dan menjalankan DCA secara presisi.
+3. **Harga Rata-Rata Unit-Weighted Harmonic Average:**
    $$Q_{\text{lama}} = \frac{M_{\text{lama}}}{P_{\text{lama}}}, \quad Q_{\text{baru}} = \frac{M_{\text{baru}}}{P_{\text{baru}}}$$
    $$Q_{\text{total}} = Q_{\text{lama}} + Q_{\text{baru}}$$
    $$M_{\text{total}} = M_{\text{lama}} + M_{\text{baru}}$$
@@ -333,32 +339,41 @@ Sistem mengklasifikasikan transaksi DCA ke dalam buku besar (*ledger*):
 Level Dynamic TP dan Dynamic SL secara otomatis dikalibrasi ulang terhadap $P_{\text{avg, baru}}$.
 
 ### 8.3. Evaluasi Alert Otomatis & Decoupled State Machine (Siklus 30 Menit)
-Sistem memisahkan deteksi alert dari konfirmasi pengiriman (*decoupled acknowledgment*):
+Sistem memisahkan deteksi alert dari konfirmasi pengiriman (*decoupled delivery contract*):
 1. **Tahap Deteksi (`check-alerts`):**
-   - Setiap 30 menit, cron job memeriksa harga pasar live via CoinGecko.
+   - Setiap 30 menit, cron job memeriksa harga pasar live via CoinGecko dengan timeout 10 detik dan pengecekan kode status HTTP.
    - Jika $P_{\text{current}} \ge \text{Price}_{\text{TP}}$ dan `tp_alerted_at` masih NULL: alert `TP_HIT` disiapkan.
    - Jika $P_{\text{current}} \le \text{Price}_{\text{SL}}$ dan `sl_alerted_at` masih NULL: alert `SL_HIT` disiapkan.
-   - Pada tahap ini, database **TIDAK langsung diubah**, sehingga jika pengiriman pesan Telegram gagal (gangguan jaringan/rate limit), alert tetap berstatus *pending*.
-2. **Tahap Konfirmasi (`ack-alert <id> <type>`):**
-   - Node n8n mengeksekusi `ack-alert` hanya setelah pesan notifikasi Telegram berhasil terkirim ke pengguna.
-   - Kolom `tp_alerted_at` atau `sl_alerted_at` di SQLite diperbarui dengan timestamp ISO terkini.
+   - Pada tahap ini, database **TIDAK langsung diubah**, sehingga jika pengiriman notifikasi gagal, status alert tetap *pending*.
+2. **Tahap Pengiriman & Verifikasi Respons Telegram (`Is Telegram Send OK?`):**
+   - Pesan dikirim ke Telegram via HTTP Request node.
+   - Node IF `Is Telegram Send OK?` memverifikasi secara ketat ekspresi `{{ $json.ok === true }}`.
+   - Perintah konfirmasi `ack-alert` mereferensikan origin node `$('Format Cron Alerts').first().json.ackCmd` untuk mencegah hilangnya payload perintah akibat tertimpa respons HTTP Telegram.
+   - Jika Telegram gagal mengirim pesan (HTTP non-200 atau `ok: false`), node ACK dilewati sepenuhnya sehingga notifikasi dicoba ulang pada siklus berikutnya tanpa kehilangan jejak.
 3. **Mekanisme Re-arming (Hysteresis 2%):**
    - Alert TP di-*re-arm* (flag `tp_alerted_at` direset ke NULL) jika harga terkoreksi kembali $\ge 2\%$ di bawah level TP ($P_{\text{current}} < \text{Price}_{\text{TP}} \times 0.98$).
    - Alert SL di-*re-arm* (flag `sl_alerted_at` direset ke NULL) jika harga pulih kembali $\ge 2\%$ di atas level SL ($P_{\text{current}} > \text{Price}_{\text{SL}} \times 1.02$).
 
 ### 8.4. Realisasi Parsial, Validasi Ketat, & Transaksi Atomik
 Mendukung perintah partial sell `/sell <simbol> [porsi]` (contoh: `/sell tia 50%` atau `/sell btc 50k`):
-1. **Validasi Porsi Ketat (`INVALID_PORTION`):**
-   - Parameter porsi persen wajib memenuhi $0 < \text{porsi} \le 100\%$.
-   - Parameter nominal wajib memenuhi $0 < \text{nominal} \le M_{\text{total}}$.
-   - Input tidak valid (misal: `0%`, `150%`, string acak) ditolak seketika tanpa mengubah status posisi.
-2. **Kalkulasi Realisasi:**
+1. **Validasi Porsi Ketat Berbasis Regex Penuh:**
+   - Parameter persentase wajib memenuhi pola `/^(\d+(\.\d+)?)%$/` dengan rentang $0 < \text{porsi} \le 100\%$.
+   - Parameter nominal wajib memenuhi pola `/^(\d+(\.\d+)?)(k)?$/i` dengan rentang $0 < \text{nominal} \le M_{\text{total}}$.
+   - Input parsial ilegal (seperti `0%`, `150%`, `50abc`, `-20%`) ditolak seketika dengan pesan ramah pengguna tanpa memicu mutasi status posisi.
+2. **Resolusi Ambigu Ticker (`/sell` & `/stat`):**
+   - Pencarian posisi mendukung `coin_id` dan `simbol`.
+   - Jika terdapat lebih dari satu posisi aktif yang cocok, sistem mengembalikan daftar opsi `coin_id` eksplisit dan meminta konfirmasi spesifik pengguna, bukan memilih salah satu secara acak dengan `LIMIT 1`.
+3. **Kalkulasi Realisasi & Presisi Finansial (Proceeds Direct):**
    - $Q_{\text{jual}} = Q_{\text{aktif}} \times \text{porsi}$
    - $M_{\text{realized}} = M_{\text{aktif}} \times \text{porsi}$
    - $\text{Proceeds} = Q_{\text{jual}} \times P_{\text{current}}$
-   - $\text{PnL}_{\text{IDR}} = \text{Proceeds} - M_{\text{realized}}$
-3. **Transaksi Atomik SQLite (`db.transaction`):**
-   Seluruh mutasi basis data (pembaruan tabel `user_positions` dan pencatatan audit ke `position_transactions`) dieksekusi di dalam satu blok transaksi atomik SQLite. Jika salah satu query gagal, sistem secara otomatis melakukan `ROLLBACK` menyeluruh untuk mencegah korupsi saldo atau catatan ledger yang hilang.
+   - $\text{PnL}_{\text{IDR}} = \text{round}(\text{Proceeds} - M_{\text{realized}})$
+   - $\text{Total Return} = \text{round}(\text{Proceeds})$
+   Formula ini menghitung langsung hasil kotor rupiah (*gross cash proceeds*) tanpa melewati perantara pembulatan persentase dua desimal, menjaga presisi akuntansi finansial hingga rupiah terdekat.
+4. **Transaksi Atomik SQLite (`withTx` / `BEGIN IMMEDIATE`):**
+   Seluruh mutasi basis data dieksekusi di dalam satu blok transaksi atomik SQLite dengan rollback otomatis saat terjadi kendala eksekusi.
+5. **Jendela Pemanasan Indikator Minimum ($\ge 35$ Hari):**
+   Kalkulasi indikator teknikal (MACD EMA-26, Bollinger Bands 20, Wilder RSI 14, ADX 14, dan ATR 14) mewajibkan ketersediaan data historis minimal 35 lilin harian demi menjamin konvergensi statistik indikator.
 
 ---
 
