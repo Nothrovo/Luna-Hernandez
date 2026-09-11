@@ -859,7 +859,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const update = $('Parse Incoming Message').first().json;\nconst mode = String(update.command || '').toLowerCase();\nconst raw = String(update.args || '').trim().split(/\\s+/)[0] || '';\nif (!/^(stock|futures)$/.test(mode)) throw new Error('Unsupported market-analysis command');\nlet symbol = raw.toUpperCase();\nif (mode === 'futures') symbol = symbol.replace(/[\\s/_-]/g, '');\nconst valid = mode === 'stock'\n  ? /^[A-Z][A-Z0-9.-]{0,9}$/.test(symbol)\n  : /^[A-Z0-9]{2,20}$/.test(symbol);\nif (!valid) symbol = '';\nconst dbCmd = 'node /home/node/.n8n/market_analysis_cli.mjs ' + mode + ' ' + symbol;\nreturn [{ json: {\n  ...update,\n  marketMode: mode,\n  marketSymbol: symbol,\n  dbCmd,\n} }];"
+        "jsCode": "const update = $('Parse Incoming Message').first().json;\nconst mode = String(update.command || '').toLowerCase();\nconst raw = String(update.args || '').trim();\nif (!/^(stock|futures)$/.test(mode)) throw new Error('Unsupported market-analysis command');\n// Bersihkan prefix bursa seperti \"NASDAQ:\", \"NYSE:\", dll jika ada\nconst cleaned = raw.replace(/^(?:NASDAQ|NYSE|AMEX|BATS|ARCA|IDX)\\s*:\\s*/i, '').trim();\nlet symbol = (cleaned.split(/\\s+/)[0] || '').toUpperCase();\nif (mode === 'futures') symbol = symbol.replace(/[\\s/_-]/g, '');\nconst valid = mode === 'stock'\n  ? /^[A-Z][A-Z0-9.-]{0,9}$/.test(symbol)\n  : /^[A-Z0-9]{2,20}$/.test(symbol);\nif (!valid) symbol = '';\nconst dbCmd = 'node /home/node/.n8n/market_analysis_cli.mjs ' + mode + ' ' + symbol;\nreturn [{ json: {\n  ...update,\n  marketMode: mode,\n  marketSymbol: symbol,\n  dbCmd,\n} }];"
       },
       "id": "M1001",
       "name": "Prepare Market Command",
@@ -887,7 +887,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const ctx = $('Prepare Market Command').first().json;\nconst stdout = String($input.first().json.stdout || '').trim();\nlet parsed;\ntry {\n  const line = stdout.split('\\n').filter(Boolean).at(-1) || '';\n  parsed = JSON.parse(line);\n} catch {\n  parsed = { ok: false, error: { code: 'INVALID_PROVIDER_RESPONSE', message: 'CLI tidak mengembalikan JSON yang valid.', retryable: false } };\n}\nreturn [{ json: {\n  ...ctx,\n  analysisOk: parsed?.ok === true && parsed?.analysis != null,\n  analysis: parsed?.analysis || null,\n  marketError: parsed?.error || null,\n} }];"
+        "jsCode": "const ctx = $('Prepare Market Command').first().json;\nconst rawInput = $input.first().json;\nconst rawText = String(rawInput.stdout || rawInput.error || rawInput.stderr || '').trim();\nlet parsed = null;\ntry {\n  const match = rawText.match(/\\{[\\s\\S]*\\}/);\n  if (match) parsed = JSON.parse(match[0]);\n} catch {}\nif (!parsed || typeof parsed !== 'object') {\n  parsed = { ok: false, error: { code: 'INVALID_PROVIDER_RESPONSE', message: 'CLI tidak mengembalikan JSON yang valid.', retryable: false } };\n}\nreturn [{ json: {\n  ...ctx,\n  analysisOk: parsed?.ok === true && parsed?.analysis != null,\n  analysis: parsed?.analysis || null,\n  marketError: parsed?.error || null,\n} }];"
       },
       "id": "M1003",
       "name": "Parse Market Analysis Result",
