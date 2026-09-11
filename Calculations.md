@@ -50,7 +50,19 @@ flowchart TD
 
 Data mentah dari API CoinGecko berupa pasangan timestamp dan harga `[timestamp, price]` diakumulasi menjadi deret waktu harian (*Daily OHLC*) untuk mengeliminasi *noise intraday*.
 
-### 3.1. Agregasi Candlestick Harian
+### 3.1. Rentang Data & Presisi Desimal Adaptif
+1. **Jendela Data 90 Hari (*Warmup Window*):**
+   Bot menarik $N = 90$ hari historis (ditingkatkan dari 60 hari) guna menjamin masa pemanasan (*warmup period*) yang memadai bagi kestabilan indikator eksponensial seperti $\text{EMA}_{26}$ pada MACD dan perataan Wilder pada $\text{ADX}_{14}$.
+2. **Presisi Desimal Adaptif Sub-Rupiah:**
+   Untuk koin meme mikro (seperti PEPE, SHIB) bernilai sub-rupiah, sistem menghindari pembulatan integer `Math.round()`:
+   $$\text{fmtPrice}(x) = \begin{cases}
+   \text{Rp } 0,xxxx\dots & \text{jika } x < 0.01 \text{ (hingga 8 angka desimal presisi)} \\
+   \text{Rp } 0,xxxx & \text{jika } 0.01 \le x < 1 \text{ (4 angka desimal presisi)} \\
+   \text{Rp } x,xx & \text{jika } 1 \le x < 100 \text{ (2 angka desimal presisi)} \\
+   \text{Rp } \text{format}(\text{round}(x)) & \text{jika } x \ge 100 \text{ (integer dengan pemisah ribuan)}
+   \end{cases}$$
+
+### 3.2. Agregasi Candlestick Harian
 Untuk setiap hari kalender $d$ dalam rentang data $N$ hari:
 $$O_d = \text{Harga pertama pada hari } d$$
 $$H_d = \max_{t \in d} (P_t)$$
@@ -59,7 +71,7 @@ $$C_d = \text{Harga terakhir pada hari } d$$
 
 ---
 
-### 3.2. Relative Strength Index (RSI) — Wilder's Smoothed
+### 3.3. Relative Strength Index (RSI) — Wilder's Smoothed
 Digunakan untuk mengukur kecepatan dan perubahan pergerakan harga dalam periode $n = 14$ hari.
 
 1. **Perubahan Harga Harian ($\Delta P_t$):**
@@ -80,7 +92,7 @@ Digunakan untuk mengukur kecepatan dan perubahan pergerakan harga dalam periode 
 
 ---
 
-### 3.3. Moving Average Convergence Divergence (MACD)
+### 3.4. Moving Average Convergence Divergence (MACD)
 Mengukur momentum tren menggunakan selisih dua Exponential Moving Average (EMA) standar (12, 26) dan garis sinyal (9).
 
 1. **Exponential Moving Average ($\text{EMA}_k$):**
@@ -98,7 +110,7 @@ Mengukur momentum tren menggunakan selisih dua Exponential Moving Average (EMA) 
 
 ---
 
-### 3.4. Bollinger Bands (BB 20, 2) & %B
+### 3.5. Bollinger Bands (BB 20, 2) & %B
 Mengukur volatilitas band dan posisi relatif harga terhadap standar deviasi 20 hari.
 
 1. **Simple Moving Average 20 Hari ($\text{SMA}_{20}$):**
@@ -120,7 +132,7 @@ Mengukur volatilitas band dan posisi relatif harga terhadap standar deviasi 20 h
 
 ---
 
-### 3.5. Average True Range (ATR 14)
+### 3.6. Average True Range (ATR 14)
 Mengukur volatilitas absolut pasar dalam satuan mata uang (IDR).
 
 1. **True Range ($TR_t$):**
@@ -134,7 +146,7 @@ Mengukur volatilitas absolut pasar dalam satuan mata uang (IDR).
 
 ---
 
-### 3.6. Average Directional Index (ADX 14)
+### 3.7. Average Directional Index (ADX 14)
 Mengukur kekuatan tren terlepas dari arah naik atau turun.
 
 1. **Directional Movement ($+DM$ dan $-DM$):**
@@ -154,7 +166,7 @@ Mengukur kekuatan tren terlepas dari arah naik atau turun.
 
 ---
 
-### 3.7. Historical Volatility (Annualized)
+### 3.8. Historical Volatility (Annualized)
 Mengukur volatilitas tahunan berbasis log return:
 $$r_t = \ln\left(\frac{C_t}{C_{t-1}}\right)$$
 $$\sigma_r = \sqrt{\frac{1}{M-1} \sum_{i=1}^M (r_i - \bar{r})^2}$$
@@ -169,10 +181,10 @@ Untuk mengambil keputusan deterministik, kelima pilar indikator digabungkan ke d
 | Indikator | Bobot ($w_i$) | Parameter Inti | Kondisi Skor Maksimum (+1.0) | Kondisi Skor Minimum (-1.0) |
 | :--- | :---: | :--- | :--- | :--- |
 | **RSI** | $0.25$ | RSI 14-period | Oversold ($< 30$) atau Pullback Sehat ($40 \le \text{RSI} \le 55$ di Uptrend) | Overbought ($> 70$) atau Rebound Gagal di Downtrend |
-| **MACD** | $0.25$ | Normalized Histogram | Histogram positif kuat ($\text{MACD}_{\text{norm}} \ge +2\%$) | Histogram negatif tajam ($\text{MACD}_{\text{norm}} \le -2\%$) |
-| **Bollinger** | $0.20$ | $\%B$ Posisi Band | Rebound dekat Lower Band / Pullback sehat ($0.15 \le \%B \le 0.40$) | Melekat di Upper Band ($\%B \ge 0.85$) rawan koreksi |
-| **Volatilitas** | $0.15$ | Annualized $\sigma_{\text{ann}}$ | Volatilitas rendah & terkompresi ($< 45\%$) | Volatilitas liar tak terkendali ($> 110\%$) |
-| **Tren (ADX)** | $0.15$ | $\text{SMA}_{20} \times \text{ADX}$ | $C_t > \text{SMA}_{20}$ dengan $\text{ADX} > 25$ (Uptrend kuat) | $C_t < \text{SMA}_{20}$ dengan $\text{ADX} > 25$ (Downtrend kuat) |
+| **MACD** | $0.30$ | Normalized Histogram | Histogram positif kuat ($\text{MACD}_{\text{norm}} \ge +2\%$) | Histogram negatif tajam ($\text{MACD}_{\text{norm}} \le -2\%$) |
+| **Bollinger** | $0.25$ | $\%B$ Posisi Band | Rebound dekat Lower Band / Pullback sehat ($0.15 \le \%B \le 0.40$) | Melekat di Upper Band ($\%B \ge 0.85$) rawan koreksi |
+| **Volatilitas** | $0.10$ | Annualized $\sigma_{\text{ann}}$ | Volatilitas rendah & terkompresi ($< 45\%$) | Volatilitas liar tak terkendali ($> 110\%$) |
+| **Tren (ADX)** | $0.10$ | $\text{SMA}_{20} \times \text{ADX}$ | $C_t > \text{SMA}_{20}$ dengan $\text{ADX} > 25$ (Uptrend kuat) | $C_t < \text{SMA}_{20}$ dengan $\text{ADX} > 25$ (Downtrend kuat) |
 
 ### Formula Skor Komposit:
 $$\text{TechnicalScore} = \sum_{i=1}^{5} w_i \cdot s_i$$
@@ -181,9 +193,9 @@ di mana $s_i \in [-1.0, +1.0]$.
 ### Kategori Rekomendasi Awal:
 $$\text{Keputusan} = \begin{cases} 
 \text{STRONG BUY} & \text{jika } \text{TechnicalScore} \ge +0.50 \\
-\text{BUY / ACCUMULATE} & \text{jika } +0.18 \le \text{TechnicalScore} < +0.50 \\
-\text{HOLD / NEUTRAL} & \text{jika } -0.18 < \text{TechnicalScore} < +0.18 \\
-\text{REDUCE / SELL} & \text{jika } \text{TechnicalScore} \le -0.18
+\text{BUY / ACCUMULATE} & \text{jika } +0.20 \le \text{TechnicalScore} < +0.50 \\
+\text{HOLD / NEUTRAL} & \text{jika } -0.20 < \text{TechnicalScore} < +0.20 \\
+\text{REDUCE / SELL} & \text{jika } \text{TechnicalScore} \le -0.20
 \end{cases}$$
 
 ---
@@ -299,17 +311,44 @@ Untuk setiap posisi terbuka di SQLite:
 $$\text{PnL}\% = \left( \frac{P_{\text{current}} - P_{\text{avg}}}{P_{\text{avg}}} \right) \times 100\%$$
 $$\text{PnL}_{\text{IDR}} = M_{\text{total}} \times \left( \frac{\text{PnL}\%}{100} \right)$$
 
-### 8.2. Dollar-Cost Averaging (DCA Accumulation)
-Jika pengguna menambah alokasi modal pada koin yang sudah ada (`/buy <simbol> [modal]` ulang), harga beli rata-rata dihitung ulang secara berbobot (*volume-weighted*):
-$$P_{\text{avg, baru}} = \frac{(P_{\text{avg, lama}} \times M_{\text{lama}}) + (P_{\text{beli, baru}} \times M_{\text{baru}})}{M_{\text{lama}} + M_{\text{baru}}}$$
+### 8.2. Dollar-Cost Averaging (Unit-Weighted Harmonic Average)
+Jika pengguna menambah alokasi modal pada koin yang sudah ada (`/buy <simbol> [modal]` ulang), harga beli rata-rata dihitung menggunakan rata-rata terbobot unit (*unit-weighted harmonic average*), bukan rata-rata harga aritmatika:
+$$Q_{\text{lama}} = \frac{M_{\text{lama}}}{P_{\text{lama}}}, \quad Q_{\text{baru}} = \frac{M_{\text{baru}}}{P_{\text{baru}}}$$
+$$Q_{\text{total}} = Q_{\text{lama}} + Q_{\text{baru}}$$
 $$M_{\text{total}} = M_{\text{lama}} + M_{\text{baru}}$$
+$$P_{\text{avg, baru}} = \frac{M_{\text{total}}}{Q_{\text{total}}} = \frac{M_{\text{lama}} + M_{\text{baru}}}{\frac{M_{\text{lama}}}{P_{\text{lama}}} + \frac{M_{\text{baru}}}{P_{\text{baru}}}}$$
+
+> **Catatan Integritas Matematis:**  
+> Formula aritmatika sederhana $(P_1 M_1 + P_2 M_2) / (M_1 + M_2)$ adalah kekeliruan matematis karena mengalikan harga dengan modal (menghasilkan dimensi harga $\times$ uang yang tidak bermakna). Dalam bursa riil, harga rata-rata selalu merupakan total uang tunai yang dibelanjakan dibagi total kuantitas unit aset yang dimiliki ($M_{\text{total}} / Q_{\text{total}}$).
+
+Sistem mengklasifikasikan transaksi DCA ke dalam buku besar (*ledger*):
+- **`DCA_AVERAGE_DOWN`**: jika $P_{\text{baru}} < P_{\text{lama}}$ (menurunkan harga pokok saat harga terkoreksi).
+- **`DCA_AVERAGE_UP`**: jika $P_{\text{baru}} \ge P_{\text{lama}}$ (menambah posisi saat tren menguat / *pyramiding*).
 Level Dynamic TP dan Dynamic SL secara otomatis dikalibrasi ulang terhadap $P_{\text{avg, baru}}$.
 
-### 8.3. Evaluasi Alert Otomatis (Cron 30 Menit)
-Setiap 30 menit, skrip `manage_positions.mjs check-alerts` mengambil harga pasar live via CoinGecko:
-- Jika $P_{\text{current}} \ge \text{Price}_{\text{TP}}$: Notifikasi **TARGET PROFIT TERCAPAI 🎯** langsung dikirimkan via Telegram.
-- Jika $P_{\text{current}} \le \text{Price}_{\text{SL}}$: Notifikasi **STOP LOSS TERPACU 🛑** langsung dikirimkan via Telegram.
-- Status posisi diperbarui menjadi `tp_hit` atau `sl_hit` di database SQLite untuk mencegah duplikasi notifikasi.
+### 8.3. Evaluasi Alert Otomatis & State Machine Anti-Spam (Siklus 30 Menit)
+Setiap 30 menit, cron job `manage_positions.mjs check-alerts` mengambil harga pasar live via CoinGecko:
+1. **Trigger Alert TP/SL:**
+   - Jika $P_{\text{current}} \ge \text{Price}_{\text{TP}}$ dan alert belum dikirim (atau telah di-*re-arm*): Notifikasi **TARGET PROFIT TERCAPAI 🎯** dikirimkan ke Telegram, dan kolom `tp_alerted_at` dicatat dengan timestamp ISO saat ini.
+   - Jika $P_{\text{current}} \le \text{Price}_{\text{SL}}$ dan alert belum dikirim (atau telah di-*re-arm*): Notifikasi **STOP LOSS TERPACU 🛑** dikirimkan ke Telegram, dan kolom `sl_alerted_at` dicatat dengan timestamp ISO saat ini.
+2. **Mekanisme Re-arming (Hysteresis 2%):**
+   - Alert TP di-*re-arm* (flag `tp_alerted_at` direset ke null) hanya jika harga terkoreksi kembali $\ge 2\%$ di bawah level TP ($P_{\text{current}} < \text{Price}_{\text{TP}} \times 0.98$).
+   - Alert SL di-*re-arm* (flag `sl_alerted_at` direset ke null) hanya jika harga pulih kembali $\ge 2\%$ di atas level SL ($P_{\text{current}} > \text{Price}_{\text{SL}} \times 1.02$).
+   - Mekanisme ini mengeliminasi *spam loop* notifikasi setiap 30 menit ketika harga berkonsolidasi di sekitar batas TP atau SL.
+
+### 8.4. Realisasi Parsial & Audit Ledger (`position_transactions`)
+Mendukung perintah partial sell `/sell <simbol> [porsi]` (contoh: `/sell tia 50%`):
+1. **Kuantitas Dijual:** $Q_{\text{jual}} = Q_{\text{aktif}} \times \text{porsi}$.
+2. **Modal Terealisasi:** $M_{\text{realized}} = M_{\text{aktif}} \times \text{porsi}$.
+3. **Hasil Penjualan (Proceeds):** $\text{Proceeds} = Q_{\text{jual}} \times P_{\text{current}}$.
+4. **Realized PnL:** $\text{PnL}_{\text{IDR}} = \text{Proceeds} - M_{\text{realized}}$.
+5. **Pembaruan Posisi Aktif:**
+   - $Q_{\text{sisa}} = Q_{\text{aktif}} - Q_{\text{jual}}$
+   - $M_{\text{sisa}} = M_{\text{aktif}} - M_{\text{realized}}$
+   - Harga rata-rata ($P_{\text{avg}}$) tidak berubah karena posisi hanya dikurangi sebagian.
+   - Jika sisa kuantitas $\le 0$, status posisi ditutup (`closed`).
+6. **Audit Ledger Permanen (`position_transactions`):**
+   Setiap transaksi (`BUY_INITIAL`, `DCA_AVERAGE_DOWN`, `DCA_AVERAGE_UP`, `PARTIAL_SELL`, `CLOSE_SELL`) dicatat secara permanen dengan mencatat `position_id`, `type`, `price`, `amount_idr`, `quantity`, `realized_pnl_idr`, `realized_pnl_pct`, dan `created_at`.
 
 ---
 

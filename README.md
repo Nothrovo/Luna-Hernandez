@@ -41,12 +41,12 @@ Bot ini terintegrasi langsung dengan **Telegram Webhook Realtime (0 delay)**, di
 ### 6. 💼 Manajemen Portofolio & Posisi Aktif
 - **`/buy <simbol> [modal]`**: Catat entri posisi dengan modal fleksibel (contoh: `/buy sol 150k`, `/buy btc 200000`, atau default Rp 100.000). Mendukung **Auto-DCA / Average Down** berbobot jika koin sudah ada di portofolio.
 - **`/stat <simbol>`**: Evaluasi posisi aktif — menghitung floating PnL realtime, sisa jarak ke TP dinamis, toleransi ke SL dinamis, dan rekomendasi tindakan (*Hold*, *Take Profit*, *Cut Loss*, atau *DCA*).
-- **`/sell <simbol>`**: Menutup posisi di harga pasar saat ini, menghitung realized PnL (% dan Rp), merekap total pengembalian modal, dan menghapus koin dari pantauan.
+- **`/sell <simbol> [porsi]`**: Menutup posisi (penuh atau parsial, misal: `/sell tia 50%`) di harga pasar saat ini, menghitung realized PnL (% dan Rp), merekap pengembalian modal, dan mencatat mutasi ke audit ledger `position_transactions`.
 - **`/portfolio`**: Ringkasan dinamis koin aktif, total modal teralokasi, estimasi nilai portofolio, total floating PnL, dan status tren makro BTC.
 
 ### 7. 🔔 Auto-Alert Peringatan TP / SL (Setiap 30 Menit)
 - Cron job n8n otomatis berjalan di latar belakang setiap **30 menit**.
-- Mengecek harga pasar realtime posisi aktif di database SQLite dan langsung mengirimkan notifikasi Telegram saat koin menyentuh **Target Profit** atau **Stop Loss**.
+- Mengecek harga pasar realtime posisi aktif di database SQLite dan langsung mengirimkan notifikasi Telegram saat koin menyentuh **Target Profit** atau **Stop Loss**. Dilengkapi state machine hysteresis 2% untuk mencegah loop spam notifikasi.
 
 ---
 
@@ -64,7 +64,7 @@ Bot ini terintegrasi langsung dengan **Telegram Webhook Realtime (0 delay)**, di
 | `/market` | Top 5 gainers & losers 24 jam dalam IDR | `/market` |
 | `/buy <simbol> [modal]` | Catat beli koin & pantau ketat (mendukung auto-DCA) | `/buy sol 150k` |
 | `/stat <simbol>` | Evaluasi posisi holder: PnL, jarak TP/SL, saran aksi | `/stat sol` |
-| `/sell <simbol>` | Tutup posisi, hitung realized PnL, dan unlist koin | `/sell sol` |
+| `/sell <simbol> [porsi]` | Tutup posisi penuh/parsial, hitung realized PnL, simpan ledger | `/sell sol`, `/sell tia 50%` |
 | `/portfolio` | Rekap portofolio aktif, total modal, PnL, & makro BTC | `/portfolio` |
 | `/history [simbol]` | Cek riwayat analisis yang tersimpan di SQLite lokal | `/history sol` |
 
@@ -125,7 +125,10 @@ docker compose restart n8n
 docker compose exec -T n8n node /home/node/.n8n/manage_positions.mjs check-alerts
 
 # Lihat daftar posisi aktif di database
-docker compose exec -T n8n node /home/node/.n8n/manage_positions.mjs list
+docker compose exec -T n8n node /home/node/.n8n/manage_positions.mjs list-active
+
+# Lihat histori transaksi dan audit ledger
+docker compose exec -T n8n node /home/node/.n8n/manage_positions.mjs history
 ```
 
 ---

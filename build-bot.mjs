@@ -5,6 +5,22 @@ import { writeFileSync, copyFileSync } from 'node:fs';
 // ═══════════════════════════════════════════════════════════════
 const TECH_SHARED = String.raw`
 const clamp = (x, lo = -1, hi = 1) => Math.max(lo, Math.min(hi, x));
+function fmtPrice(val) {
+  if (val == null || !Number.isFinite(Number(val))) return 'Rp 0';
+  const v = Number(val);
+  const abs = Math.abs(v);
+  let maxDigits = 0;
+  if (abs < 0.0001) maxDigits = 8;
+  else if (abs < 0.01) maxDigits = 6;
+  else if (abs < 1) maxDigits = 4;
+  else if (abs < 1000) maxDigits = 2;
+  return new Intl.NumberFormat('id-ID', {
+    style: 'currency',
+    currency: 'IDR',
+    minimumFractionDigits: (maxDigits > 0 && abs < 1) ? 2 : 0,
+    maximumFractionDigits: maxDigits,
+  }).format(v);
+}
 const mean = v => v.reduce((s, x) => s + x, 0) / v.length;
 const std = v => { const m = mean(v); return Math.sqrt(v.reduce((s, x) => s + (x - m) ** 2, 0) / v.length); };
 function ema(vals, period) {
@@ -208,7 +224,7 @@ const code = {
     geminiApiKey: 'YOUR_GEMINI_API_KEY',
     geminiModel: 'gemini-3.5-flash-lite',
     quoteCurrency: 'idr',
-    marketDays: 60,
+    marketDays: 90,
     technicalWeights: { rsi: 0.25, macd: 0.30, bollinger: 0.25, volatility: 0.10, trend: 0.10 },
     decisionWeights: { sentiment: 0.40, technical: 0.60 },
     thresholds: { buy: 0.20, sell: -0.20 },
@@ -252,11 +268,12 @@ if (command === 'status') command = 'stat';
 if (command === 'berita' || command === 'kabar') command = 'news';
 if (command === 'risk' || command === 'resiko') command = 'risk';
 
-let coinArg = '', modalArg = 100000;
+let coinArg = '', modalArg = 100000, porsiArg = '100%';
 if (args) {
   const parts = args.split(/\s+/);
   coinArg = parts[0] ? parts[0].trim().toUpperCase() : '';
   if (parts[1]) {
+    porsiArg = parts[1].trim();
     let m = parts[1].toLowerCase().replace(/[,._]/g, '');
     if (m.endsWith('k')) m = parseFloat(m) * 1000;
     else if (m.endsWith('jt') || m.endsWith('m') || m.endsWith('juta')) m = parseFloat(m) * 1000000;
@@ -270,6 +287,7 @@ return [{ json: {
   args,
   coinArg,
   modalArg,
+  porsiArg,
   from: (msg.from && msg.from.first_name) || 'Trader',
   chatId: senderChatId,
   hasCommand: command !== '__none__',
@@ -354,19 +372,33 @@ const update = $('Parse Incoming Message').first().json;
 const cfg = $('Config').first().json;
 const query = update.args.toLowerCase().trim();
 const coins = data.coins || [];
+
+// Prioritaskan koin dengan market cap terbesar (anti-token scam/duplikat ticker)
+coins.sort((a, b) => {
+  const ra = (a.market_cap_rank != null && a.market_cap_rank > 0) ? a.market_cap_rank : 999999;
+  const rb = (b.market_cap_rank != null && b.market_cap_rank > 0) ? b.market_cap_rank : 999999;
+  return ra - rb;
+});
+
 let coin = coins.find(c => c.symbol?.toLowerCase() === query);
 if (!coin) coin = coins.find(c => c.name?.toLowerCase() === query);
-if (!coin && coins.length > 0) coin = coins[0];
+
 if (!coin) {
   return [{ json: {
     __error: true,
-    telegramMessage: '❌ Koin <b>' + query.toUpperCase() + '</b> tidak ditemukan.\nCoba: /coin sol, /coin aero, /coin btc',
+    telegramMessage: '❌ Koin <b>' + query.toUpperCase() + '</b> tidak ditemukan di pasar CoinGecko.\nPastikan simbol tepat (contoh: <code>/coin sol</code>, <code>/coin btc</code>, <code>/coin aero</code>).',
     chatId: cfg.telegramChatId, botToken: cfg.botToken,
   }}];
 }
 return [{ json: {
-  coinId: coin.id, coinSymbol: coin.symbol.toUpperCase(), coinName: coin.name,
-  command: update.command, args: update.args, chatId: cfg.telegramChatId, botToken: cfg.botToken,
+  coinId: coin.id,
+  coinSymbol: coin.symbol.toUpperCase(),
+  coinName: coin.name,
+  marketCapRank: coin.market_cap_rank || 'N/A',
+  command: update.command,
+  args: update.args,
+  chatId: cfg.telegramChatId,
+  botToken: cfg.botToken,
 }}];`,
 
   coinTechnical: TECH_SHARED + String.raw`
@@ -494,10 +526,11 @@ const prompt = [
   prevText,
   '',
   '═══ INSTRUKSI ANALISIS ═══',
-  'Tulis analisis singkat, padat, actionable (maksimal 700 karakter):',
-  '1. KESIMPULAN: BUY / HOLD / SELL — jelaskan alasan utamanya (tren + pullback + sentimen berita).',
-  '2. EVALUASI RISIKO: Jika BTC Gate bearish atau koin jenuh beli (%B > 0.85), sampaikan risiko objektifnya (hindari kata kaku dilarang, berikan konteks ancamannya).',
-  '3. DUA SKENARIO SWING: Berikan Skenario Konservatif (tunggu retest support / pullback lebih dalam) vs Skenario Agresif (jika tetap entry sekarang, gunakan Stop Loss Dinamis ' + (tech.dynSlPct || 6) + '% dan batasi porsi modal kecil 20-30%).',
+  'Sinyal kuantitatif algoritma saat ini: ' + decision + ' (Skor: ' + ts.toFixed(2) + ', Tren: ' + trendLabel + ').',
+  'Tulis analisis sentimen berita & validasi risiko untuk trader swing (maksimal 600 karakter):',
+  '1. SENTIMEN BERITA: Jelaskan apakah berita live mendukung sinyal ' + decision + ' atau justru berlawanan/waspada.',
+  '2. FAKTOR RISIKO: Sampaikan ancaman pasar objektif (BTC Gate, level overbought %B, atau katalis negatif).',
+  '3. DUA SKENARIO SWING: Skenario Konservatif (tunggu konfirmasi support) vs Skenario Agresif (eksekusi terukur dengan SL ' + (tech.dynSlPct || 6) + '%).',
   '4. Bahasa Indonesia santai profesional, langsung ke poin, TANPA disclaimer panjang di akhir.',
 ].join('\n');
 
@@ -542,13 +575,13 @@ if (decisionText === 'BUY' && btcGate.btcGate === 'bearish') {
   btcWarning = '\n⚠️ <i>Signal BUY diturunkan ke HOLD karena makro BTC sedang bearish (harga di bawah SMA-20 & MACD negatif). Tunggu BTC stabil sebelum entry altcoin!</i>';
 }
 
-const conf = Math.round(Math.abs(ts) * 100);
-const price = new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(tech.currentPrice);
+const signalStrength = Math.round(Math.abs(ts) * 100);
+const price = fmtPrice(tech.currentPrice);
 
 let prevLine = '';
 if ((prevCtx.previousSessions || []).length > 0) {
   const last = prevCtx.previousSessions[0];
-  const lastPriceFmt = new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(last.harga);
+  const lastPriceFmt = fmtPrice(last.harga);
   const diffPct = last.harga > 0 ? ((tech.currentPrice - last.harga) / last.harga * 100).toFixed(1) : '0';
   prevLine = '\n📋 Analisis lalu (' + last.tanggal + '): ' + (last.keputusan || '-') + ' di ' + lastPriceFmt + ' (' + (diffPct >= 0 ? '+' : '') + diffPct + '%)';
 }
@@ -561,14 +594,14 @@ const trendIcon = tech.trendDir > 0 ? '📈' : tech.trendDir < 0 ? '📉' : '↔
 const adxTag = (tech.adxVal || 0) > 25 ? 'ADX ' + tech.adxVal + ' (Kuat)' : 'ADX ' + (tech.adxVal || 0) + ' (Moderat)';
 const btcIcon = btcGate.btcGate === 'bullish' ? '🟢' : btcGate.btcGate === 'bearish' ? '🔴' : '⚪';
 
-const tpTarget = tech.dynTpPrice ? new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(tech.dynTpPrice) : '-';
-const slTarget = tech.dynSlPrice ? new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(tech.dynSlPrice) : '-';
+const tpTarget = tech.dynTpPrice ? fmtPrice(tech.dynTpPrice) : '-';
+const slTarget = tech.dynSlPrice ? fmtPrice(tech.dynSlPrice) : '-';
 const rrText = tech.rrRatio ? tech.rrRatio.toFixed(1) : '2.0';
 const exitGuide = '\n🎯 <b>Panduan Exit Dinamis (R:R 1:' + rrText + '):</b> Target TP (+' + (tech.dynTpPct || 12) + '%): ~' + tpTarget + ' | Stop Loss (-' + (tech.dynSlPct || 6) + '%): ~' + slTarget;
 
 const msg = [
   decisionIcon + ' <b>' + tech.coinName + ' (' + tech.coinSymbol + ') — ' + decisionText + '</b>',
-  'Teknikal: ' + conf + '% | Data: ' + tech.dataPoints + ' hari' + prevLine,
+  'Kekuatan Sinyal: ' + signalStrength + '% | Data: ' + tech.dataPoints + ' hari' + prevLine,
   '',
   '💰 Harga: ' + price,
   '📈 RSI: ' + tech.indicators.rsi14 + (tech.indicators.rsi14 < 30 ? ' ⬇️' : tech.indicators.rsi14 > 70 ? ' ⬆️' : ' →'),
@@ -580,7 +613,7 @@ const msg = [
   btcWarning,
   newsLine,
   '',
-  '🤖 <b>Analisis AI (Berdasarkan Berita Live):</b>',
+  '🤖 <b>Sintesis Sentimen Berita & Narasi (AI):</b>',
   aiAnalysis,
   exitGuide,
   '',
@@ -774,32 +807,64 @@ const posCtx = $('Process Portfolio Check').first().json;
 const cfg = $('Config').first().json;
 const positions = posCtx.positions || [];
 
-const fmt = v => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(v);
+function fmt(val) {
+  if (val == null || !Number.isFinite(Number(val))) return 'Rp 0';
+  const v = Number(val);
+  const abs = Math.abs(v);
+  let maxDigits = 0;
+  if (abs < 0.0001) maxDigits = 8;
+  else if (abs < 0.01) maxDigits = 6;
+  else if (abs < 1) maxDigits = 4;
+  else if (abs < 1000) maxDigits = 2;
+  return new Intl.NumberFormat('id-ID', {
+    style: 'currency',
+    currency: 'IDR',
+    minimumFractionDigits: (maxDigits > 0 && abs < 1) ? 2 : 0,
+    maximumFractionDigits: maxDigits,
+  }).format(v);
+}
 
-let totalModal = 0, totalNilai = 0;
+let totalModal = 0, totalNilai = 0, hasStale = false;
 const positionRows = [];
 
 positions.forEach((pos, idx) => {
   const buyPrice = Number(pos.harga_beli);
   const modal = Number(pos.modal_idr);
-  const currPrice = priceData[pos.coin_id]?.idr || buyPrice;
-  const pnlPct = Number(((currPrice - buyPrice) / buyPrice * 100).toFixed(2));
-  const pnlIdr = Math.round(modal * (pnlPct / 100));
-  const currVal = modal + pnlIdr;
+  const livePrice = priceData[pos.coin_id]?.idr;
+  const isLive = typeof livePrice === 'number' && livePrice > 0;
 
-  totalModal += modal;
-  totalNilai += currVal;
+  if (isLive) {
+    const currPrice = livePrice;
+    const pnlPct = Number(((currPrice - buyPrice) / buyPrice * 100).toFixed(2));
+    const pnlIdr = Math.round(modal * (pnlPct / 100));
+    const currVal = modal + pnlIdr;
 
-  const isProfit = pnlPct >= 0;
-  const icon = isProfit ? '🟢' : '🔴';
+    totalModal += modal;
+    totalNilai += currVal;
 
-  positionRows.push([
-    (idx + 1) + '️⃣ <b>' + pos.simbol + ' (' + pos.nama + ')</b>',
-    '• Beli: ' + fmt(buyPrice) + ' | Sekarang: ' + fmt(currPrice),
-    '• Modal: ' + fmt(modal) + ' (Nilai: ' + fmt(currVal) + ')',
-    '• PnL: ' + icon + ' ' + (isProfit ? '+' : '') + pnlPct + '% (' + (isProfit ? '+' : '') + fmt(pnlIdr) + ')',
-    '• TP: ' + fmt(pos.target_profit) + ' | SL: ' + fmt(pos.stop_loss),
-  ].join('\n'));
+    const isProfit = pnlPct >= 0;
+    const icon = isProfit ? '🟢' : '🔴';
+
+    positionRows.push([
+      (idx + 1) + '️⃣ <b>' + pos.simbol + ' (' + pos.nama + ')</b>',
+      '• Beli: ' + fmt(buyPrice) + ' | Sekarang: ' + fmt(currPrice) + ' <i>[LIVE]</i>',
+      '• Modal: ' + fmt(modal) + ' (Nilai: ' + fmt(currVal) + ')',
+      '• PnL: ' + icon + ' ' + (isProfit ? '+' : '') + pnlPct + '% (' + (isProfit ? '+' : '') + fmt(pnlIdr) + ')',
+      '• TP: ' + fmt(pos.target_profit) + ' | SL: ' + fmt(pos.stop_loss),
+    ].join('\n'));
+  } else {
+    hasStale = true;
+    totalModal += modal;
+    totalNilai += modal;
+
+    positionRows.push([
+      (idx + 1) + '️⃣ <b>' + pos.simbol + ' (' + pos.nama + ')</b>',
+      '• Beli: ' + fmt(buyPrice) + ' | Sekarang: ⚠️ <i>[Data API N/A]</i>',
+      '• Modal: ' + fmt(modal),
+      '• PnL: ⏳ <i>Menunggu pembaruan live feed</i>',
+      '• TP: ' + fmt(pos.target_profit) + ' | SL: ' + fmt(pos.stop_loss),
+    ].join('\n'));
+  }
 });
 
 const totalPnlPct = totalModal > 0 ? Number(((totalNilai - totalModal) / totalModal * 100).toFixed(2)) : 0;
@@ -890,14 +955,21 @@ if (!query) {
 }
 
 const coins = data.coins || [];
+
+// Prioritaskan koin dengan market cap terbesar
+coins.sort((a, b) => {
+  const ra = (a.market_cap_rank != null && a.market_cap_rank > 0) ? a.market_cap_rank : 999999;
+  const rb = (b.market_cap_rank != null && b.market_cap_rank > 0) ? b.market_cap_rank : 999999;
+  return ra - rb;
+});
+
 let coin = coins.find(c => c.symbol?.toLowerCase() === query);
 if (!coin) coin = coins.find(c => c.name?.toLowerCase() === query);
-if (!coin && coins.length > 0) coin = coins[0];
 
 if (!coin) {
   return [{ json: {
     found: false,
-    telegramMessage: '❌ Koin <b>' + query.toUpperCase() + '</b> tidak ditemukan di pasar.\nCoba periksa kembali simbol koinnya (contoh: SOL, SUI, AERO, BTC).',
+    telegramMessage: '❌ Koin <b>' + query.toUpperCase() + '</b> tidak ditemukan di pasar CoinGecko.\nCoba periksa kembali simbol koinnya (contoh: SOL, SUI, AERO, BTC).',
     chatId: cfg.telegramChatId, botToken: cfg.botToken,
   }}];
 }
@@ -907,6 +979,7 @@ return [{ json: {
   coinId: coin.id,
   coinSymbol: coin.symbol.toUpperCase(),
   coinName: coin.name,
+  marketCapRank: coin.market_cap_rank || 'N/A',
   modalArg: update.modalArg || 100000,
   chatId: cfg.telegramChatId,
   botToken: cfg.botToken,
@@ -925,7 +998,14 @@ if (!rawPrices.length) {
   }}];
 }
 
-const lastPrice = Math.round(rawPrices.at(-1)[1]);
+const lastPrice = Number(rawPrices.at(-1)[1]);
+if (!lastPrice || lastPrice <= 0 || !Number.isFinite(lastPrice)) {
+  return [{ json: {
+    hasPrice: false,
+    telegramMessage: '❌ Harga pasar tidak valid atau 0 untuk <b>' + buyCtx.coinSymbol + '</b>.',
+    chatId: buyCtx.chatId, botToken: buyCtx.botToken,
+  }}];
+}
 
 // Hitung volatilitas harian & ATR dinamis
 const daily = new Map();
@@ -962,8 +1042,8 @@ const atrPct = lastPrice > 0 ? (atrVal / lastPrice) * 100 : 3.5;
 const slPct = Number(Math.min(8.5, Math.max(4.5, 1.8 * atrPct)).toFixed(1));
 const tpPct = Number(Math.max(10.0, Math.min(25.0, slPct * 2.2)).toFixed(1));
 
-const tpPrice = Math.round(lastPrice * (1 + tpPct / 100));
-const slPrice = Math.round(lastPrice * (1 - slPct / 100));
+const tpPrice = lastPrice * (1 + tpPct / 100);
+const slPrice = lastPrice * (1 - slPct / 100);
 const sym = buyCtx.coinSymbol;
 const coinId = buyCtx.coinId;
 const name = (buyCtx.coinName || sym).replace(/'/g, "");
@@ -996,23 +1076,43 @@ try {
 
 if (!res || !res.success) {
   return [{ json: {
-    telegramMessage: '❌ Gagal mencatat posisi: ' + (res?.error || 'Unknown error'),
+    telegramMessage: '❌ Gagal mencatat posisi: ' + (res?.message || res?.error || 'Unknown error'),
     chatId: cfg.telegramChatId, botToken: cfg.botToken,
   }}];
 }
 
-const fmt = v => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(v);
+function fmt(val) {
+  if (val == null || !Number.isFinite(Number(val))) return 'Rp 0';
+  const v = Number(val);
+  const abs = Math.abs(v);
+  let maxDigits = 0;
+  if (abs < 0.0001) maxDigits = 8;
+  else if (abs < 0.01) maxDigits = 6;
+  else if (abs < 1) maxDigits = 4;
+  else if (abs < 1000) maxDigits = 2;
+  return new Intl.NumberFormat('id-ID', {
+    style: 'currency',
+    currency: 'IDR',
+    minimumFractionDigits: (maxDigits > 0 && abs < 1) ? 2 : 0,
+    maximumFractionDigits: maxDigits,
+  }).format(v);
+}
+
 const tpP = res.tpPct || 12;
 const slP = res.slPct || 6;
 const rrText = (tpP / slP).toFixed(1);
+const qtyText = res.totalQuantity ? (res.totalQuantity < 1 ? res.totalQuantity.toFixed(4) : res.totalQuantity.toLocaleString('id-ID', { maximumFractionDigits: 4 })) : '-';
 
 let msg = '';
 if (res.action === 'dca') {
+  const isUp = res.actionType === 'DCA_AVERAGE_UP';
+  const dcaLabel = isUp ? 'DCA Average Up (Pyramiding)' : 'DCA Average Down (Akumulasi Diskon)';
   msg = [
-    '🔵 <b>DCA Ditambahkan: ' + res.simbol + ' (' + res.nama + ')</b>',
+    '🔵 <b>' + dcaLabel + ': ' + res.simbol + ' (' + res.nama + ')</b>',
     '',
     '💰 Entry Baru: ' + fmt(res.entryBaru),
-    '⚖️ <b>Harga Rata-Rata (Avg Down):</b> ' + fmt(res.avgPrice),
+    '⚖️ <b>Harga Rata-Rata Baru:</b> ' + fmt(res.avgPrice),
+    '📦 <b>Total Koin Dimiliki:</b> ' + qtyText + ' ' + res.simbol,
     '💵 Modal Ditambahkan: ' + fmt(res.modalBaru),
     '💼 <b>Total Modal Terakumulasi:</b> ' + fmt(res.totalModal),
     '',
@@ -1020,13 +1120,14 @@ if (res.action === 'dca') {
     '🛑 Stop Loss Baru (-' + slP + '%): ' + fmt(res.slPrice),
     '📐 Rasio R:R Baru: 1 : ' + rrText,
     '',
-    '<i>Posisi diperbarui otomatis di /portfolio & dipantau cron alert!</i>',
+    '<i>Posisi diperbarui di /portfolio & dicatat ke ledger position_transactions!</i>',
   ].join('\n');
 } else {
   msg = [
     '🟢 <b>Posisi Baru Terbuka: ' + res.simbol + ' (' + res.nama + ')</b>',
     '',
     '💰 Harga Beli: ' + fmt(res.avgPrice),
+    '📦 <b>Koin Didapat:</b> ' + qtyText + ' ' + res.simbol,
     '💵 Modal Alokasi: ' + fmt(res.totalModal),
     '🎯 Target Profit Dinamis (+' + tpP + '%): ' + fmt(res.tpPrice),
     '🛑 Stop Loss Dinamis (-' + slP + '%): ' + fmt(res.slPrice),
@@ -1042,14 +1143,15 @@ return [{ json: { telegramMessage: msg, chatId: cfg.telegramChatId, botToken: cf
   prepareSellQuery: String.raw`const update = $('Parse Incoming Message').first().json;
 const cfg = $('Config').first().json;
 const sym = (update.coinArg || '').toUpperCase().trim();
+const porsiArg = update.porsiArg || '100%';
 
 if (!sym) {
   const dbCmd = "node /home/node/.n8n/manage_positions.mjs get-active __NONE__";
-  return [{ json: { sym: '', dbCmd, chatId: cfg.telegramChatId, botToken: cfg.botToken } }];
+  return [{ json: { sym: '', porsiArg, dbCmd, chatId: cfg.telegramChatId, botToken: cfg.botToken } }];
 }
 
 const dbCmd = "node /home/node/.n8n/manage_positions.mjs get-active " + sym;
-return [{ json: { sym, dbCmd, chatId: cfg.telegramChatId, botToken: cfg.botToken } }];`,
+return [{ json: { sym, porsiArg, dbCmd, chatId: cfg.telegramChatId, botToken: cfg.botToken } }];`,
 
   processSellCheck: String.raw`const raw = ($input.first().json.stdout || '').trim();
 const sellInit = $('Prepare Sell Query').first().json;
@@ -1058,7 +1160,7 @@ const cfg = $('Config').first().json;
 if (!sellInit.sym) {
   return [{ json: {
     found: false,
-    telegramMessage: '❌ Masukkan simbol koin yang ingin ditutup.\nContoh: <code>/sell SOL</code>',
+    telegramMessage: '❌ Masukkan simbol koin yang ingin ditutup.\nContoh: <code>/sell SOL</code> atau <code>/sell SOL 50%</code>',
     chatId: cfg.telegramChatId, botToken: cfg.botToken,
   }}];
 }
@@ -1079,6 +1181,7 @@ if (!res || !res.found || !res.position) {
 return [{ json: {
   found: true,
   sym: sellInit.sym,
+  porsiArg: sellInit.porsiArg || '100%',
   coinId: res.position.coin_id,
   position: res.position,
   chatId: cfg.telegramChatId,
@@ -1087,9 +1190,13 @@ return [{ json: {
 
   prepareClosePosition: String.raw`const pData = $input.first().json;
 const sellCtx = $('Process Sell Check').first().json;
-const currPrice = pData[sellCtx.coinId]?.idr || sellCtx.position.harga_beli;
-const dbCmd = "node /home/node/.n8n/manage_positions.mjs sell " + sellCtx.sym + " " + currPrice;
-return [{ json: { dbCmd, currPrice, sym: sellCtx.sym, chatId: sellCtx.chatId, botToken: sellCtx.botToken } }];`,
+const livePrice = pData[sellCtx.coinId]?.idr;
+const porsi = sellCtx.porsiArg || '100%';
+
+// Validasi harga live pasar — tolak eksekusi jika API gagal demi mencegah penutupan di harga stale
+const validPrice = (typeof livePrice === 'number' && livePrice > 0) ? livePrice : 0;
+const dbCmd = "node /home/node/.n8n/manage_positions.mjs sell " + sellCtx.sym + " " + validPrice + " " + porsi;
+return [{ json: { dbCmd, currPrice: validPrice, sym: sellCtx.sym, porsi, chatId: sellCtx.chatId, botToken: sellCtx.botToken } }];`,
 
   formatSellResponse: String.raw`const raw = ($input.first().json.stdout || '').trim();
 const cfg = $('Config').first().json;
@@ -1100,29 +1207,63 @@ try {
 
 if (!res || !res.success) {
   return [{ json: {
-    telegramMessage: '❌ Gagal menutup posisi: ' + (res?.error || raw.slice(0, 100)),
+    telegramMessage: '⚠️ <b>Gagal Menutup Posisi</b>: ' + (res?.message || res?.error || raw.slice(0, 100)),
     chatId: cfg.telegramChatId, botToken: cfg.botToken,
   }}];
 }
 
-const fmt = v => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(v);
+function fmt(val) {
+  if (val == null || !Number.isFinite(Number(val))) return 'Rp 0';
+  const v = Number(val);
+  const abs = Math.abs(v);
+  let maxDigits = 0;
+  if (abs < 0.0001) maxDigits = 8;
+  else if (abs < 0.01) maxDigits = 6;
+  else if (abs < 1) maxDigits = 4;
+  else if (abs < 1000) maxDigits = 2;
+  return new Intl.NumberFormat('id-ID', {
+    style: 'currency',
+    currency: 'IDR',
+    minimumFractionDigits: (maxDigits > 0 && abs < 1) ? 2 : 0,
+    maximumFractionDigits: maxDigits,
+  }).format(v);
+}
+
 const isProfit = res.pnlPct >= 0;
 const pnlIcon = isProfit ? '🟢' : '🔴';
 const pnlWord = isProfit ? 'Untung' : 'Rugi';
 
-const msg = [
-  '🏁 <b>Posisi Ditutup: ' + res.simbol + ' (' + res.nama + ')</b>',
-  '',
-  '📅 Tanggal Masuk: ' + res.tanggalBeli,
-  '💰 Harga Beli: ' + fmt(res.hargaBeli),
-  '💵 Harga Jual: ' + fmt(res.hargaJual),
-  '',
-  '📊 <b>Hasil Realized PnL:</b>',
-  pnlIcon + ' ' + (isProfit ? '+' : '') + res.pnlPct + '% (' + pnlWord + ' ' + fmt(Math.abs(res.pnlIdr)) + ')',
-  '💵 <b>Total Dana Kembali:</b> ' + fmt(res.totalReturn) + ' (Modal ' + fmt(res.modalIdr) + ')',
-  '',
-  '<i>Koin telah dikeluarkan dari daftar pantauan aktif.</i>',
-].join('\n');
+let msg = '';
+if (res.isPartial) {
+  msg = [
+    '✂️ <b>Take Profit Sebagian (Partial Close ' + res.portionPct + '%): ' + res.simbol + ' (' + res.nama + ')</b>',
+    '',
+    '📅 Tanggal Masuk: ' + res.tanggalBeli,
+    '💰 Harga Beli Rata-rata: ' + fmt(res.hargaBeli),
+    '💵 Harga Eksekusi Jual: ' + fmt(res.hargaJual),
+    '',
+    '📊 <b>Hasil Realized PnL Porsi Ini:</b>',
+    pnlIcon + ' ' + (isProfit ? '+' : '') + res.pnlPct + '% (' + pnlWord + ' ' + fmt(Math.abs(res.pnlIdr)) + ')',
+    '💵 <b>Dana Cair:</b> ' + fmt(res.totalReturn) + ' (Modal dicairkan ' + fmt(res.modalTerjual) + ')',
+    '💼 <b>Sisa Modal Aktif:</b> ' + fmt(res.modalSisa) + ' (Tetap dipantau bot)',
+    '',
+    '<i>Catatan transaksi telah disimpan ke ledger position_transactions.</i>',
+  ].join('\n');
+} else {
+  msg = [
+    '🏁 <b>Posisi Ditutup Penuh: ' + res.simbol + ' (' + res.nama + ')</b>',
+    '',
+    '📅 Tanggal Masuk: ' + res.tanggalBeli,
+    '💰 Harga Beli: ' + fmt(res.hargaBeli),
+    '💵 Harga Jual: ' + fmt(res.hargaJual),
+    '',
+    '📊 <b>Hasil Realized PnL:</b>',
+    pnlIcon + ' ' + (isProfit ? '+' : '') + res.pnlPct + '% (' + pnlWord + ' ' + fmt(Math.abs(res.pnlIdr)) + ')',
+    '💵 <b>Total Dana Kembali:</b> ' + fmt(res.totalReturn) + ' (Modal ' + fmt(res.modalIdr) + ')',
+    '',
+    '<i>Koin telah dikeluarkan dari daftar pantauan aktif dan disimpan ke ledger audit.</i>',
+  ].join('\n');
+}
 
 return [{ json: { telegramMessage: msg, chatId: cfg.telegramChatId, botToken: cfg.botToken } }];`,
 
@@ -1196,7 +1337,7 @@ const distToSl = Number(((currPrice - slPrice) / currPrice * 100).toFixed(1));
 
 const isProfit = pnlPct >= 0;
 const pnlIcon = isProfit ? '🟢' : '🔴';
-const fmt = v => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(v);
+const fmt = v => fmtPrice(v);
 
 // Evaluasi Rekomendasi Khusus Holder
 let recBadge = '', recDesc = '';
@@ -1255,22 +1396,38 @@ if (!coins.length || !coins[0] || !coins[0].id) {
 
 const stableSet = new Set(['usdt', 'usdc', 'dai', 'fdusd', 'usde', 'tusd', 'usdd', 'pyusd', 'bousd', 'wbtc', 'steth', 'weth', 'weeth', 'wsteth']);
 
-// Filter koin likuid non-stable
+function fmt(val) {
+  if (val == null || !Number.isFinite(Number(val))) return 'Rp 0';
+  const v = Number(val);
+  const abs = Math.abs(v);
+  let maxDigits = 0;
+  if (abs < 0.0001) maxDigits = 8;
+  else if (abs < 0.01) maxDigits = 6;
+  else if (abs < 1) maxDigits = 4;
+  else if (abs < 1000) maxDigits = 2;
+  return new Intl.NumberFormat('id-ID', {
+    style: 'currency',
+    currency: 'IDR',
+    minimumFractionDigits: (maxDigits > 0 && abs < 1) ? 2 : 0,
+    maximumFractionDigits: maxDigits,
+  }).format(v);
+}
+
+// 1. Filter koin likuid non-stable yang memenuhi kriteria utama (Uptrend 7d + Koreksi Sehat 24h)
 const screened = coins.filter(c => {
   const sym = (c.symbol || '').toLowerCase();
   if (stableSet.has(sym)) return false;
   const p7d = c.price_change_percentage_7d_in_currency;
   const p24h = c.price_change_percentage_24h;
   if (typeof p7d !== 'number' || typeof p24h !== 'number') return false;
-  // Uptrend 7d, koreksi sehat 24h (-8% s/d -0.5%)
   return p7d >= 2.5 && p24h <= -0.5 && p24h >= -8.5;
 });
 
-// Urutkan berdasarkan kekuatan tren 7d
 screened.sort((a, b) => (b.price_change_percentage_7d_in_currency || 0) - (a.price_change_percentage_7d_in_currency || 0));
 
-// Jika kurang dari 3, fallback ke koin tren positif dengan koreksi ringan
-let picks = screened.slice(0, 3);
+let picks = screened.slice(0, 3).map(c => ({ ...c, _isFallback: false }));
+
+// 2. Fallback jika kurang dari 3: ambil koin tren positif dengan momentum netral/konsolidasi
 if (picks.length < 3) {
   const fallback = coins.filter(c => {
     const sym = (c.symbol || '').toLowerCase();
@@ -1281,10 +1438,8 @@ if (picks.length < 3) {
     return typeof p7d === 'number' && typeof p24h === 'number' && p7d >= 0 && p24h <= 1.0;
   });
   fallback.sort((a, b) => (b.price_change_percentage_7d_in_currency || 0) - (a.price_change_percentage_7d_in_currency || 0));
-  picks = picks.concat(fallback.slice(0, 3 - picks.length));
+  picks = picks.concat(fallback.slice(0, 3 - picks.length).map(c => ({ ...c, _isFallback: true })));
 }
-
-const fmt = v => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(v);
 
 const btc = coins.find(c => c.id === 'bitcoin' || (c.symbol || '').toLowerCase() === 'btc');
 const btc24h = btc ? (btc.price_change_percentage_24h || 0) : 0;
@@ -1294,10 +1449,19 @@ const cards = picks.map((c, i) => {
   const price = c.current_price || 0;
   const p7d = Number((c.price_change_percentage_7d_in_currency || 0).toFixed(1));
   const p24h = Number((c.price_change_percentage_24h || 0).toFixed(1));
-  const entryLow = fmt(Math.round(price * 0.98));
+  const entryLow = fmt(price * 0.98);
   const entryHigh = fmt(price);
 
-  // Estimasi TP/SL dinamis berbasis momentum
+  let momText = '';
+  if (p24h <= -0.5) {
+    momText = '📉 24h: ' + p24h + '% (Diskon / Pullback)';
+  } else if (p24h <= 0) {
+    momText = '📉 24h: ' + p24h + '% (Konsolidasi Tipis)';
+  } else {
+    momText = '📈 24h: +' + p24h + '% (Konsolidasi / Akumulasi)';
+  }
+
+  // Estimasi momentum TP/SL awal
   let slPct = 6.0;
   let tpPct = 12.0;
   if (p7d > 35 || Math.abs(p24h) > 6) {
@@ -1307,16 +1471,18 @@ const cards = picks.map((c, i) => {
     slPct = 5.0;
     tpPct = 10.0;
   }
-  const tp = fmt(Math.round(price * (1 + tpPct / 100)));
-  const sl = fmt(Math.round(price * (1 - slPct / 100)));
+  const tp = fmt(price * (1 + tpPct / 100));
+  const sl = fmt(price * (1 - slPct / 100));
   const rrText = (tpPct / slPct).toFixed(1);
 
+  const cardHeader = (i + 1) + '️⃣ <b>' + (c._isFallback ? '⚡ ' : '🎯 ') + c.symbol.toUpperCase() + ' (' + c.name + ')' + (c._isFallback ? ' — [Watchlist Alternatif]' : ' — [Pullback Sehat]') + '</b>';
+
   return [
-    (i + 1) + '️⃣ <b>' + c.symbol.toUpperCase() + ' (' + c.name + ')</b>',
+    cardHeader,
     '• Harga Sekarang: ' + fmt(price),
-    '• Momentum: 📈 7d: +' + p7d + '% | 📉 24h: ' + p24h + '% (Diskon)',
+    '• Momentum: 📈 7d: +' + p7d + '% | ' + momText,
     '• Area Entry Ideal: ' + entryLow + ' – ' + entryHigh,
-    '• Target TP Dinamis (+' + tpPct + '%): ' + tp + ' | SL (-' + slPct + '%): ' + sl + ' (R:R 1:' + rrText + ')',
+    '• Estimasi TP (+' + tpPct + '%): ' + tp + ' | SL (-' + slPct + '%): ' + sl + ' (R:R 1:' + rrText + ')',
     '👉 <i>Beli & pantau:</i> <code>/buy ' + c.symbol.toLowerCase() + ' 150k</code> | <code>/risk ' + c.symbol.toLowerCase() + '</code>',
   ].join('\n');
 });
@@ -1324,16 +1490,16 @@ const cards = picks.map((c, i) => {
 const now = new Intl.DateTimeFormat('id-ID', { timeZone: cfg.timezone, timeStyle: 'short' }).format(new Date());
 
 const btcNote = isBtcWeak
-  ? '\n⚠️ <i>Catatan Makro: BTC sedang tertekan (' + btc24h.toFixed(1) + '% 24h). Daftar di bawah berfungsi sebagai Watchlist Pantau Pullback (gunakan alokasi modal terukur).</i>\n'
+  ? '\n⚠️ <i>Catatan Makro: BTC sedang tertekan (' + btc24h.toFixed(1) + '% 24h). Gunakan koin di bawah sebagai Watchlist Pantau Pullback dengan alokasi defensif.</i>\n'
   : '';
 
 const msg = [
   '🎯 <b>Radar Rekomendasi Swing Entry Luna Hernandez</b>',
-  '<i>' + now + ' WIB | Kriteria: Uptrend Mingguan + Pullback Sehat 24 Jam</i>',
+  '<i>' + now + ' WIB | Kriteria: Uptrend Mingguan + Pullback / Akumulasi</i>',
   btcNote,
   cards.join('\n\n'),
   '',
-  '💡 <i>Ketik <code>/coin &lt;simbol&gt;</code> untuk bedah teknikal atau <code>/risk &lt;simbol&gt;</code> untuk kalkulator risiko.</i>\n' +
+  '💡 <i>Catatan: Level TP/SL di atas adalah estimasi momentum awal. Ketik <code>/risk &lt;simbol&gt;</code> untuk kalkulator ATR dinamis & sizing terukur.</i>\n' +
   '<i>Ketik <code>/buy &lt;simbol&gt; [modal]</code> untuk langsung memasukkan ke portofolio.</i>\n' +
   '⚠️ <i>Decision support only. Bukan saran finansial.</i>',
 ].filter(Boolean).join('\n');
@@ -1627,9 +1793,16 @@ if (!query) {
 }
 
 const coins = data.coins || [];
+
+// Prioritaskan koin dengan market cap terbesar
+coins.sort((a, b) => {
+  const ra = (a.market_cap_rank != null && a.market_cap_rank > 0) ? a.market_cap_rank : 999999;
+  const rb = (b.market_cap_rank != null && b.market_cap_rank > 0) ? b.market_cap_rank : 999999;
+  return ra - rb;
+});
+
 let coin = coins.find(c => c.symbol?.toLowerCase() === query);
 if (!coin) coin = coins.find(c => c.name?.toLowerCase() === query);
-if (!coin && coins.length > 0) coin = coins[0];
 
 if (!coin) {
   return [{ json: {
@@ -1645,6 +1818,7 @@ return [{ json: {
   coinId: coin.id,
   coinSymbol: coin.symbol.toUpperCase(),
   coinName: coin.name,
+  marketCapRank: coin.market_cap_rank || 'N/A',
   modalArg: update.modalArg || 100000,
   chatId: update.chatId || cfg.telegramChatId,
   botToken: cfg.botToken,
@@ -1759,8 +1933,8 @@ if (vol > 0.85) {
   mitigatingFactors.push('Volatilitas relatif stabil (' + (vol * 100).toFixed(0) + '%)');
 }
 
-const isTrendBullish = sma20val !== null && currentPrice > sma20val && macdVal.histogram > 0;
-if (adxVal > 25 && isTrendBullish) {
+const isTrendBullish = currentPrice > (sma20val || 0) && macdVal.histogram > 0;
+if (isTrendBullish && adxVal > 25) {
   riskScore -= 1.5;
   mitigatingFactors.push('Tren naik sangat kokoh didukung kekuatan ADX (' + adxVal.toFixed(1) + ')');
 } else if (currentPrice < (sma20val || 0) && macdVal.histogram < 0) {
@@ -1793,19 +1967,19 @@ const dynSlPct = Number(Math.min(8.5, Math.max(4.5, 1.8 * atrPct)).toFixed(1));
 const rrRatio = (isTrendBullish && adxVal > 25) ? 2.5 : 2.0;
 const dynTpPct = Number(Math.max(10.0, Math.min(25.0, dynSlPct * rrRatio)).toFixed(1));
 
-const dynTpPrice = Math.round(currentPrice * (1 + dynTpPct / 100));
-const dynSlPrice = Math.round(currentPrice * (1 - dynSlPct / 100));
+const dynTpPrice = currentPrice * (1 + dynTpPct / 100);
+const dynSlPrice = currentPrice * (1 - dynSlPct / 100);
 
 // 6. Kalkulasi Nominal Modal
 const modal = coinCtx.modalArg || 100000;
 const maxLossNominal = Math.round(modal * (dynSlPct / 100));
 const potentialGainNominal = Math.round(modal * (dynTpPct / 100));
 
-const fmt = v => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(v);
+const fmt = v => fmtPrice(v);
 
 // 7. Format Output Telegram HTML
 const msg = [
-  '⚡ <b>Kalkulator Risiko & Sizing Modal: ' + coinCtx.coinName + ' (' + coinCtx.coinSymbol + ')</b>',
+  '⚡ <b>Kalkulator Risiko & Simulasi Alokasi: ' + coinCtx.coinName + ' (' + coinCtx.coinSymbol + ')</b>',
   '',
   '📊 <b>Profil Risiko Pasar:</b>',
   '• <b>Skor Risiko: ' + riskScore.toFixed(1) + ' / 10 (' + riskLabel + ')</b>',
@@ -1821,10 +1995,13 @@ const msg = [
   '• Target TP Dinamis (+' + dynTpPct + '%): ' + fmt(dynTpPrice),
   '• Stop Loss Dinamis (-' + dynSlPct + '%): ' + fmt(dynSlPrice),
   '',
-  '💵 <b>Kalkulasi Modal (Asumsi Alokasi ' + fmt(modal) + '):</b>',
-  '• Rekomendasi Sizing Portofolio: <b>' + maxAllocPct + '</b> dari total modal',
-  '• Potensi Profit (TP): <b>+' + fmt(potentialGainNominal) + '</b>',
-  '• Risiko Kerugian (SL): <b>-' + fmt(maxLossNominal) + '</b>',
+  '💵 <b>Simulasi Alokasi Terpilih (Modal ' + fmt(modal) + '):</b>',
+  '• Estimasi Kerugian jika SL: <b>-' + fmt(maxLossNominal) + '</b> (-' + dynSlPct + '%)',
+  '• Estimasi Keuntungan jika TP: <b>+' + fmt(potentialGainNominal) + '</b> (+' + dynTpPct + '%)',
+  '',
+  '📐 <b>Panduan Position Sizing Portofolio:</b>',
+  '• Porsi Alokasi Maksimal: <b>' + maxAllocPct + '</b> dari total modal portofolio trading lo',
+  '• Prinsip Keamanan: Membatasi dampak kerugian jika SL tersentuh agar risiko per transaksi tetap di bawah 1–2% total portofolio.',
   '',
   '🛡️ <b>Sudut Pandang Risk-Taker (Skenario Agresif):</b>',
   (riskFactors.length ? '⚠️ <i>Peringatan Risiko:</i>\n' + riskFactors.map(f => '  - ' + f).join('\n') + '\n' : ''),
