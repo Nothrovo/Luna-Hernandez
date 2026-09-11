@@ -385,9 +385,11 @@ return [{ json: { telegramMessage: msg, chatId: cfg.telegramChatId, botToken: cf
   // ── /stock and /futures (analysis-only) ──
   prepareMarketCommand: String.raw`const update = $('Parse Incoming Message').first().json;
 const mode = String(update.command || '').toLowerCase();
-const raw = String(update.args || '').trim().split(/\s+/)[0] || '';
+const raw = String(update.args || '').trim();
 if (!/^(stock|futures)$/.test(mode)) throw new Error('Unsupported market-analysis command');
-let symbol = raw.toUpperCase();
+// Bersihkan prefix bursa seperti "NASDAQ:", "NYSE:", dll jika ada
+const cleaned = raw.replace(/^(?:NASDAQ|NYSE|AMEX|BATS|ARCA|IDX)\s*:\s*/i, '').trim();
+let symbol = (cleaned.split(/\s+/)[0] || '').toUpperCase();
 if (mode === 'futures') symbol = symbol.replace(/[\s/_-]/g, '');
 const valid = mode === 'stock'
   ? /^[A-Z][A-Z0-9.-]{0,9}$/.test(symbol)
@@ -402,12 +404,14 @@ return [{ json: {
 } }];`,
 
   parseMarketAnalysisResult: String.raw`const ctx = $('Prepare Market Command').first().json;
-const stdout = String($input.first().json.stdout || '').trim();
-let parsed;
+const rawInput = $input.first().json;
+const rawText = String(rawInput.stdout || rawInput.error || rawInput.stderr || '').trim();
+let parsed = null;
 try {
-  const line = stdout.split('\n').filter(Boolean).at(-1) || '';
-  parsed = JSON.parse(line);
-} catch {
+  const match = rawText.match(/\{[\s\S]*\}/);
+  if (match) parsed = JSON.parse(match[0]);
+} catch {}
+if (!parsed || typeof parsed !== 'object') {
   parsed = { ok: false, error: { code: 'INVALID_PROVIDER_RESPONSE', message: 'CLI tidak mengembalikan JSON yang valid.', retryable: false } };
 }
 return [{ json: {
