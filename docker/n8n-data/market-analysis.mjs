@@ -766,6 +766,161 @@ export function analyzeFuturesMarket({
   };
 }
 
+function averageDollarVolume(candles, periods = 20) {
+  const source = normalizeCandles(candles).slice(-periods);
+  return source.length ? mean(source.map(candle => candle.close * candle.volume)) : 0;
+}
+
+function pullbackQuality(percentB) {
+  if (!Number.isFinite(percentB)) return 0;
+  return clamp(1 - Math.abs(percentB - 0.5) / 0.7, 0, 1) * 100;
+}
+
+export function rankStockRecommendations({
+  candidates = [],
+  benchmarkDailyBars = [],
+  limit = 3,
+} = {}) {
+  const benchmarkReturn20 = trailingReturn(benchmarkDailyBars, 20);
+  const evaluated = [];
+  for (const candidate of candidates) {
+    try {
+      const symbol = String(candidate?.symbol || '').trim().toUpperCase();
+      if (!/^[A-Z][A-Z0-9.-]{0,9}$/.test(symbol)) continue;
+      const candidateReturn20 = trailingReturn(candidate.dailyBars, 20);
+      const relativeStrength20d = benchmarkReturn20 == null || candidateReturn20 == null
+        ? null
+        : candidateReturn20 - benchmarkReturn20;
+      const frame = calculateTechnicalFrame(candidate.dailyBars, {
+        periodsPerYear: 252,
+        relativeStrength: relativeStrength20d,
+        assetClass: 'stock',
+      });
+      const indicators = frame.indicators;
+      if (!(indicators.sma20 > 0) || !(indicators.sma50 > 0)) continue;
+      if (frame.currentPrice < indicators.sma50 || indicators.sma20 < indicators.sma50) continue;
+      const liquidity = averageDollarVolume(candidate.dailyBars);
+      const relativeScore = relativeStrength20d == null ? 50 : clamp(50 + relativeStrength20d * 250, 0, 100);
+      const pullbackScore = pullbackQuality(indicators.bollingerPercentB);
+      evaluated.push({
+        symbol,
+        price: frame.currentPrice,
+        asOf: frame.asOf,
+        rankScoreBase: 0.55 * frame.score + 0.25 * pullbackScore + 0.15 * relativeScore,
+        liquidity,
+        setup: indicators.bollingerPercentB <= 0.7 ? 'PULLBACK' : 'TREND_WATCH',
+        factors: {
+          technicalScore: frame.score,
+          relativeStrength20d: round(relativeStrength20d, 6),
+          rsi14: indicators.rsi14,
+          adx14: indicators.adx14,
+          bollingerPercentB: indicators.bollingerPercentB,
+          atrPct: indicators.atrPct,
+          averageDollarVolume20d: round(liquidity, 2),
+          support: frame.levels.support,
+          resistance: frame.levels.resistance,
+        },
+        executionAllowed: false,
+      });
+    } catch (error) {
+      if (!(error instanceof MarketAnalysisError) || error.code !== 'INSUFFICIENT_DATA') throw error;
+    }
+  }
+  const maximumLiquidity = Math.max(...evaluated.map(candidate => candidate.liquidity), 1);
+  const ranked = evaluated.map(candidate => ({
+    ...candidate,
+    rankScore: round(candidate.rankScoreBase + 5 * Math.sqrt(candidate.liquidity / maximumLiquidity), 2),
+  })).sort((left, right) => right.rankScore - left.rankScore || right.liquidity - left.liquidity || left.symbol.localeCompare(right.symbol));
+  return {
+    schemaVersion: 1,
+    assetClass: 'stock',
+    methodology: 'Daily trend + pullback quality + 20d relative strength vs SPY + IEX dollar-volume tie-breaker.',
+    evaluatedCount: candidates.length,
+    eligibleCount: ranked.length,
+    candidates: ranked.slice(0, clamp(Math.trunc(limit), 1, 10)).map(({ rankScoreBase, liquidity, ...candidate }) => candidate),
+  };
+}
+
+function oiRegime(priceChangePct, oiChangePct) {
+  if (!Number.isFinite(priceChangePct) || !Number.isFinite(oiChangePct)) return 'UNKNOWN';
+  if (priceChangePct >= 0 && oiChangePct >= 0) return 'PRICE_UP_OI_UP';
+  if (priceChangePct < 0 && oiChangePct >= 0) return 'PRICE_DOWN_OI_UP';
+  if (priceChangePct >= 0 && oiChangePct < 0) return 'PRICE_UP_OI_DOWN';
+  return 'PRICE_DOWN_OI_DOWN';
+}
+
+export function rankFuturesRecommendations({ candidates = [], limit = 3 } = {}) {
+  const valid = [];
+  for (const candidate of candidates) {
+    try {
+      const symbol = String(candidate?.symbol || '').trim().toUpperCase();
+      if (!/^[A-Z0-9]{5,20}$/.test(symbol) || !symbol.endsWith('USDT')) continue;
+      const frame = calculateTechnicalFrame(candidate.fourHourBars, {
+        periodsPerYear: 365 * 6,
+        assetClass: 'crypto_perpetual',
+      });
+      const side = frame.score >= 55 ? 'LONG' : frame.score <= 45 ? 'SHORT' : null;
+      if (!side || !(frame.indicators.sma20 > 0) || !(frame.indicators.sma50 > 0)) continue;
+      if (side === 'LONG' && (frame.currentPrice < frame.indicators.sma50 || frame.indicators.sma20 < frame.indicators.sma50)) continue;
+      if (side === 'SHORT' && (frame.currentPrice > frame.indicators.sma50 || frame.indicators.sma20 > frame.indicators.sma50)) continue;
+      if (side === 'LONG' && frame.indicators.bollingerPercentB > 0.85) continue;
+      if (side === 'SHORT' && frame.indicators.bollingerPercentB < 0.15) continue;
+      const fundingRate = finiteNumber(candidate.fundingRate) ?? 0;
+      const priceChange24h = finiteNumber(candidate.priceChange24h);
+      if ((frame.indicators.atrPct ?? 0) > 8 || Math.abs(priceChange24h ?? 0) > 15 || Math.abs(fundingRate) >= 0.0015) continue;
+      const crowded = side === 'LONG' ? fundingRate >= 0.0005 : fundingRate <= -0.0005;
+      if (crowded) continue;
+      const quoteVolume = Math.max(0, finiteNumber(candidate.quoteVolume) ?? 0);
+      const oiChangePct = finiteNumber(candidate.oiChangePct);
+      valid.push({
+        symbol,
+        side,
+        price: round(finiteNumber(candidate.markPrice) ?? frame.currentPrice, 8),
+        asOf: frame.asOf,
+        quoteVolume,
+        rankScoreBase: 0.65 * (side === 'LONG' ? frame.score : 100 - frame.score)
+          + 0.25 * pullbackQuality(frame.indicators.bollingerPercentB)
+          + (oiChangePct > 0 ? 5 : 0)
+          - clamp(Math.abs(fundingRate) / 0.0005, 0, 1) * 10,
+        setup: frame.indicators.bollingerPercentB >= 0.25 && frame.indicators.bollingerPercentB <= 0.75
+          ? 'PULLBACK'
+          : 'TREND_WATCH',
+        factors: {
+          technicalScore: frame.score,
+          rsi14: frame.indicators.rsi14,
+          adx14: frame.indicators.adx14,
+          bollingerPercentB: frame.indicators.bollingerPercentB,
+          atrPct: frame.indicators.atrPct,
+          fundingRate: round(fundingRate, 8),
+          fundingRatePct: round(fundingRate * 100, 5),
+          quoteVolume24h: round(quoteVolume, 2),
+          priceChange24h: round(priceChange24h, 3),
+          oiChangePct: round(oiChangePct, 3),
+          oiRegime: oiRegime(priceChange24h, oiChangePct),
+          support: frame.levels.support,
+          resistance: frame.levels.resistance,
+        },
+        executionAllowed: false,
+      });
+    } catch (error) {
+      if (!(error instanceof MarketAnalysisError) || error.code !== 'INSUFFICIENT_DATA') throw error;
+    }
+  }
+  const maximumVolume = Math.max(...valid.map(candidate => candidate.quoteVolume), 1);
+  const ranked = valid.map(candidate => ({
+    ...candidate,
+    rankScore: round(candidate.rankScoreBase + 5 * Math.sqrt(candidate.quoteVolume / maximumVolume), 2),
+  })).sort((left, right) => right.rankScore - left.rankScore || right.quoteVolume - left.quoteVolume || left.symbol.localeCompare(right.symbol));
+  return {
+    schemaVersion: 1,
+    assetClass: 'crypto_perpetual',
+    methodology: '4H directional trend + pullback quality + funding crowding penalty + OI confirmation + quote-volume tie-breaker.',
+    evaluatedCount: candidates.length,
+    eligibleCount: ranked.length,
+    candidates: ranked.slice(0, clamp(Math.trunc(limit), 1, 10)).map(({ rankScoreBase, quoteVolume, ...candidate }) => candidate),
+  };
+}
+
 export function calculateLinearFuturesPnl({
   side,
   entryPrice,

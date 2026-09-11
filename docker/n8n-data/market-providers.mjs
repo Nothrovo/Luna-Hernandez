@@ -5,6 +5,8 @@ import {
   normalizeAlpacaBars,
   normalizeBinanceKlines,
   parseGoogleNewsRss,
+  rankFuturesRecommendations,
+  rankStockRecommendations,
 } from './market-analysis.mjs';
 
 const DAY_MS = 86_400_000;
@@ -243,4 +245,158 @@ export async function fetchFuturesMarketAnalysis(symbol, {
       newsCount: result.news.length,
     },
   };
+}
+
+export const DEFAULT_STOCK_RECOMMENDATION_UNIVERSE = Object.freeze([
+  'AAPL', 'MSFT', 'NVDA', 'AMZN', 'META', 'GOOGL',
+  'TSLA', 'AVGO', 'JPM', 'LLY', 'AMD', 'NFLX',
+]);
+
+function normalizeStockUniverse(universe) {
+  const symbols = [...new Set((universe || []).map(symbol => String(symbol).trim().toUpperCase()))]
+    .filter(symbol => /^[A-Z][A-Z0-9.-]{0,9}$/.test(symbol) && symbol !== 'SPY');
+  if (!symbols.length) throw new MarketAnalysisError('INVALID_UNIVERSE', 'Stock recommendation universe is empty');
+  return symbols.slice(0, 20);
+}
+
+export async function fetchStockRecommendations({
+  universe = DEFAULT_STOCK_RECOMMENDATION_UNIVERSE,
+  fetchJson = (url, options) => requestWithRetry(url, { ...options, responseType: 'json' }),
+  nowMs = Date.now(),
+  alpacaKey = process.env.ALPACA_API_KEY_ID,
+  alpacaSecret = process.env.ALPACA_API_SECRET,
+} = {}) {
+  if (!alpacaKey || !alpacaSecret) {
+    throw new MarketAnalysisError('CONFIG_MISSING', 'ALPACA_API_KEY_ID dan ALPACA_API_SECRET wajib diisi untuk /rec stock.');
+  }
+  const symbols = normalizeStockUniverse(universe);
+  const headers = {
+    'APCA-API-KEY-ID': alpacaKey,
+    'APCA-API-SECRET-KEY': alpacaSecret,
+    'User-Agent': 'Midas-Luna/3.1',
+  };
+  const end = nowMs - 16 * 60_000;
+  const start = nowMs - 450 * DAY_MS;
+  const fetchDailyBars = async symbol => {
+    const payload = await fetchJson(buildAlpacaBarsUrl(symbol, '1Day', { start, end }), { headers });
+    return normalizeAlpacaBars(payload, { symbol, timeframeMs: DAY_MS, nowMs });
+  };
+  let benchmarkDailyBars;
+  try {
+    benchmarkDailyBars = await fetchDailyBars('SPY');
+  } catch (error) {
+    if (error instanceof MarketAnalysisError) throw error;
+    throw new MarketAnalysisError('ALPACA_UNAVAILABLE', error?.message || 'Gagal mengambil benchmark SPY', { retryable: true });
+  }
+  const settled = await Promise.all(symbols.map(async symbol => {
+    try {
+      const dailyBars = await fetchDailyBars(symbol);
+      return dailyBars.length >= 35 ? { symbol, dailyBars } : null;
+    } catch {
+      return null;
+    }
+  }));
+  const successful = settled.filter(Boolean);
+  if (!successful.length) {
+    throw new MarketAnalysisError('ALPACA_UNAVAILABLE', 'Tidak ada simbol universe yang mengembalikan candle harian cukup', { retryable: true });
+  }
+  const ranked = rankStockRecommendations({
+    benchmarkDailyBars,
+    candidates: successful,
+    limit: 3,
+  });
+  return {
+    ...ranked,
+    provider: 'alpaca-iex',
+    asOf: ranked.candidates[0]?.asOf || null,
+    delayed: true,
+    universeCount: symbols.length,
+    successfulSymbols: successful.length,
+  };
+}
+
+function oiChangeFromHistory(rows) {
+  const values = (rows || [])
+    .map(row => Number(row?.sumOpenInterestValue ?? row?.sumOpenInterest))
+    .filter(value => Number.isFinite(value) && value > 0);
+  return values.length >= 2 ? (values.at(-1) / values[0] - 1) * 100 : null;
+}
+
+export async function fetchFuturesRecommendations({
+  fetchJson = (url, options) => requestWithRetry(url, { ...options, responseType: 'json' }),
+  nowMs = Date.now(),
+  shortlistLimit = 12,
+} = {}) {
+  const headers = { 'User-Agent': 'Midas-Luna/3.1', Accept: 'application/json' };
+  let exchangeInfo;
+  let tickers;
+  let premiums;
+  try {
+    [exchangeInfo, tickers, premiums] = await Promise.all([
+      fetchJson('https://fapi.binance.com/fapi/v1/exchangeInfo', { headers }),
+      fetchJson('https://fapi.binance.com/fapi/v1/ticker/24hr', { headers }),
+      fetchJson('https://fapi.binance.com/fapi/v1/premiumIndex', { headers }),
+    ]);
+  } catch (error) {
+    if (error instanceof MarketAnalysisError) throw error;
+    throw new MarketAnalysisError('BINANCE_UNAVAILABLE', error?.message || 'Gagal mengambil universe Binance Futures', { retryable: true });
+  }
+  if (!exchangeInfo || !Array.isArray(exchangeInfo.symbols) || !Array.isArray(tickers) || !Array.isArray(premiums)) {
+    throw new MarketAnalysisError('INVALID_PROVIDER_RESPONSE', 'Universe Binance Futures tidak memiliki bentuk data yang diharapkan', { retryable: true });
+  }
+  const stableBases = new Set(['USDC', 'FDUSD', 'USDE', 'DAI', 'TUSD', 'BUSD']);
+  const eligible = new Set((exchangeInfo?.symbols || [])
+    .filter(item => item?.contractType === 'PERPETUAL' && item?.status === 'TRADING' && item?.quoteAsset === 'USDT')
+    .filter(item => !stableBases.has(String(item.baseAsset || item.symbol?.slice(0, -4)).toUpperCase()))
+    .map(item => item.symbol));
+  const boundedLimit = clampProviderLimit(shortlistLimit, 3, 20);
+  const shortlist = (Array.isArray(tickers) ? tickers : [])
+    .filter(ticker => eligible.has(ticker?.symbol) && Number(ticker?.quoteVolume) > 0)
+    .sort((left, right) => Number(right.quoteVolume) - Number(left.quoteVolume))
+    .slice(0, boundedLimit);
+  const premiumBySymbol = new Map((Array.isArray(premiums) ? premiums : [premiums])
+    .filter(Boolean).map(item => [item.symbol, item]));
+  const settled = await Promise.all(shortlist.map(async ticker => {
+    const symbol = ticker.symbol;
+    try {
+      const [klines, openInterest] = await Promise.all([
+        fetchJson(binanceKlineUrl(symbol, '4h', 200), { headers }),
+        fetchJson(`https://fapi.binance.com/futures/data/openInterestHist?symbol=${encodeURIComponent(symbol)}&period=4h&limit=7`, { headers }).catch(() => []),
+      ]);
+      const premium = premiumBySymbol.get(symbol) || {};
+      if (!Number.isFinite(Number(premium.markPrice)) || !Number.isFinite(Number(premium.lastFundingRate))) return null;
+      const fourHourBars = normalizeBinanceKlines(klines, { nowMs });
+      if (fourHourBars.length < 35) return null;
+      return {
+        symbol,
+        fourHourBars,
+        quoteVolume: Number(ticker.quoteVolume),
+        priceChange24h: Number(ticker.priceChangePercent),
+        markPrice: Number(premium.markPrice),
+        fundingRate: Number(premium.lastFundingRate),
+        oiChangePct: oiChangeFromHistory(openInterest),
+      };
+    } catch {
+      return null;
+    }
+  }));
+  const successful = settled.filter(Boolean);
+  if (!successful.length) {
+    throw new MarketAnalysisError('BINANCE_UNAVAILABLE', 'Tidak ada pair shortlist yang mengembalikan candle/funding cukup', { retryable: true });
+  }
+  const ranked = rankFuturesRecommendations({ candidates: successful, limit: 3 });
+  return {
+    ...ranked,
+    provider: 'binance-usdm',
+    asOf: ranked.candidates[0]?.asOf || null,
+    delayed: false,
+    universeCount: eligible.size,
+    scannedCount: shortlist.length,
+    successfulSymbols: successful.length,
+  };
+}
+
+function clampProviderLimit(value, minimum, maximum) {
+  const parsed = Number.isFinite(Number(value)) ? Math.trunc(Number(value)) : minimum;
+  return Math.max(minimum, Math.min(maximum, parsed));
 }

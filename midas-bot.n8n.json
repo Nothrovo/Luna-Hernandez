@@ -354,7 +354,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const update = $('Parse Incoming Message').first().json;\nconst cfg = $('Config').first().json;\nconst userName = update.from || 'Trader';\n\nconst msg = [\n  '👋 <b>Halo ' + userName + '! Gue Luna Hernandez.</b>',\n  'Asisten decision support & riset multi-market personal lo.',\n  '',\n  'Gue bantu lo menganalisis crypto spot, saham AS, dan Binance USD-M perpetual sebelum mengambil keputusan.',\n  '',\n  '🚀 <b>Fitur Utama Luna Hernandez Bot:</b>',\n  '',\n  '1️⃣ <b>Deep Analysis Koin</b> <code>/coin &lt;simbol&gt;</code>',\n  'Hitung teknikal komprehensif (RSI, MACD, BB, ADX, SMA20), <b>browsing 10 berita Google News live</b>, histori SQLite, & dirangkum AI Gemini.',\n  '👉 <i>Coba:</i> <code>/coin sol</code>, <code>/coin aero</code>, <code>/coin btc</code>',\n  '',\n  '2️⃣ <b>Analisis Saham AS</b> <code>/stock &lt;ticker&gt;</code>',\n  'Multi-timeframe 1H/4H/1D/1W, relative strength vs SPY, fundamental SEC, DCF tiga skenario, dan berita 48 jam.',\n  '👉 <i>Coba:</i> <code>/stock AAPL</code>, <code>/stock NVDA</code>',\n  '',\n  '3️⃣ <b>Analisis Futures Perpetual</b> <code>/futures &lt;pair&gt;</code>',\n  'Multi-timeframe 15m/1H/4H/1D, mark/index basis, funding, open interest, dan crowding. <b>Analysis-only, tidak mengeksekusi order.</b>',\n  '👉 <i>Coba:</i> <code>/futures BTCUSDT</code>, <code>/futures ETH</code>',\n  '',\n  '4️⃣ <b>Kalkulator Risiko & Tactical Sizing</b> <code>/risk &lt;simbol&gt; [modal]</code>',\n  'Hitung skor risiko 1-10, downside ke SMA20/Lower BB, TP/SL dinamis (R:R min 1:2.0), & kalkulasi modal nominal untuk risk-taker.',\n  '👉 <i>Coba:</i> <code>/risk sol 200k</code>, <code>/risk aero</code>',\n  '',\n  '5️⃣ <b>Riset Bebas Live + Memori</b> <code>/ask &lt;pertanyaan&gt;</code>',\n  'Tanya kondisi pasar atau sentimen. Bot <b>browsing Google News live</b> + <b>ingat percakapan sebelumnya</b>.',\n  '👉 <i>Coba:</i> <code>/ask bagaimana peluang swing trading minggu ini?</code>',\n  '',\n  '6️⃣ <b>Radar Pasar & Rekomendasi</b>',\n  '• <code>/rec</code> — 3 rekomendasi koin pullback sehat untuk swing entry',\n  '• <code>/news &lt;simbol&gt;</code> — Headline berita live & analisis sentimen AI (e.g. <code>/news sol</code>)',\n  '• <code>/market</code> — Top 5 gainers & losers 24 jam dalam IDR',\n  '',\n  '7️⃣ <b>Manajemen Posisi & Portofolio Crypto</b>',\n  '• <code>/buy &lt;simbol&gt; [modal]</code> — Catat beli & pantau ketat (e.g. <code>/buy sol 150k</code>)',\n  '• <code>/stat &lt;simbol&gt;</code> — Evaluasi posisi: PnL, rekomendasi Hold/TP/SL/DCA',\n  '• <code>/sell &lt;simbol&gt;</code> — Tutup posisi, hitung PnL, & unlist dari pantauan',\n  '• <code>/portfolio</code> — Ringkasan koin aktif, total modal, & PnL portofolio',\n  '• <code>/history [simbol]</code> — Cek riwayat analisis semua kelas aset',\n  '',\n  '🔔 <i>Auto-Alert: Bot otomatis cek setiap 30 menit dan kirim notifikasi saat TP/SL tersentuh!</i>',\n  '⚠️ <i>Decision support only, bukan saran finansial.</i>',\n  '',\n  'Ketik <code>/help</code> kapan saja untuk melihat ringkasan perintah.',\n].join('\\n');\n\nreturn [{ json: { telegramMessage: msg, chatId: cfg.telegramChatId, botToken: cfg.botToken } }];"
+        "jsCode": "const update = $('Parse Incoming Message').first().json;\nconst cfg = $('Config').first().json;\nconst userName = update.from || 'Trader';\n\nconst msg = [\n  '👋 <b>Halo ' + userName + '! Gue Luna Hernandez.</b>',\n  'Asisten decision support & riset multi-market personal lo.',\n  '',\n  'Gue bantu lo menganalisis crypto spot, saham AS, dan Binance USD-M perpetual sebelum mengambil keputusan.',\n  '',\n  '🚀 <b>Fitur Utama Luna Hernandez Bot:</b>',\n  '',\n  '1️⃣ <b>Deep Analysis Koin</b> <code>/coin &lt;simbol&gt;</code>',\n  'Hitung teknikal komprehensif (RSI, MACD, BB, ADX, SMA20), <b>browsing 10 berita Google News live</b>, histori SQLite, & dirangkum AI Gemini.',\n  '👉 <i>Coba:</i> <code>/coin sol</code>, <code>/coin aero</code>, <code>/coin btc</code>',\n  '',\n  '2️⃣ <b>Analisis Saham AS</b> <code>/stock &lt;ticker&gt;</code>',\n  'Multi-timeframe 1H/4H/1D/1W, relative strength vs SPY, fundamental SEC, DCF tiga skenario, dan berita 48 jam.',\n  '👉 <i>Coba:</i> <code>/stock AAPL</code>, <code>/stock NVDA</code>',\n  '',\n  '3️⃣ <b>Analisis Futures Perpetual</b> <code>/futures &lt;pair&gt;</code>',\n  'Multi-timeframe 15m/1H/4H/1D, mark/index basis, funding, open interest, dan crowding. <b>Analysis-only, tidak mengeksekusi order.</b>',\n  '👉 <i>Coba:</i> <code>/futures BTCUSDT</code>, <code>/futures ETH</code>',\n  '',\n  '4️⃣ <b>Kalkulator Risiko & Tactical Sizing</b> <code>/risk &lt;simbol&gt; [modal]</code>',\n  'Hitung skor risiko 1-10, downside ke SMA20/Lower BB, TP/SL dinamis (R:R min 1:2.0), & kalkulasi modal nominal untuk risk-taker.',\n  '👉 <i>Coba:</i> <code>/risk sol 200k</code>, <code>/risk aero</code>',\n  '',\n  '5️⃣ <b>Riset Bebas Live + Memori</b> <code>/ask &lt;pertanyaan&gt;</code>',\n  'Tanya kondisi pasar atau sentimen. Bot <b>browsing Google News live</b> + <b>ingat percakapan sebelumnya</b>.',\n  '👉 <i>Coba:</i> <code>/ask bagaimana peluang swing trading minggu ini?</code>',\n  '',\n  '6️⃣ <b>Radar Pasar & Rekomendasi</b>',\n  '• <code>/rec coin|stock|futures</code> — 3 kandidat deterministik per kelas aset',\n  '• <code>/news &lt;simbol&gt;</code> — Headline berita live & analisis sentimen AI (e.g. <code>/news sol</code>)',\n  '• <code>/market</code> — Top 5 gainers & losers 24 jam dalam IDR',\n  '',\n  '7️⃣ <b>Manajemen Posisi & Portofolio Crypto</b>',\n  '• <code>/buy &lt;simbol&gt; [modal]</code> — Catat beli & pantau ketat (e.g. <code>/buy sol 150k</code>)',\n  '• <code>/stat &lt;simbol&gt;</code> — Evaluasi posisi: PnL, rekomendasi Hold/TP/SL/DCA',\n  '• <code>/sell &lt;simbol&gt;</code> — Tutup posisi, hitung PnL, & unlist dari pantauan',\n  '• <code>/portfolio</code> — Ringkasan koin aktif, total modal, & PnL portofolio',\n  '• <code>/history [simbol]</code> — Cek riwayat analisis semua kelas aset',\n  '',\n  '🔔 <i>Auto-Alert: Bot otomatis cek setiap 30 menit dan kirim notifikasi saat TP/SL tersentuh!</i>',\n  '⚠️ <i>Decision support only, bukan saran finansial.</i>',\n  '',\n  'Ketik <code>/help</code> kapan saja untuk melihat ringkasan perintah.',\n].join('\\n');\n\nreturn [{ json: { telegramMessage: msg, chatId: cfg.telegramChatId, botToken: cfg.botToken } }];"
       },
       "id": "B1000",
       "name": "Build Start",
@@ -405,7 +405,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const msg = [\n  '📖 <b>Daftar Perintah Luna Hernandez Bot</b>',\n  '',\n  '🎯 <b>Riset & Rekomendasi:</b>',\n  '• <code>/rec</code> — Rekomendasi 3 koin pullback sehat untuk swing entry',\n  '• <code>/risk &lt;simbol&gt; [modal]</code> — Kalkulator risiko, downside, & sizing modal',\n  '• <code>/news &lt;simbol&gt;</code> — Headline berita live terhangat & analisis sentimen AI',\n  '• <code>/coin &lt;simbol&gt;</code> — Deep analysis: RSI, MACD, Tren, Berita Live, & AI',\n  '• <code>/stock &lt;ticker&gt;</code> — Saham AS: multi-timeframe, SEC fundamental, DCF skenario, & berita',\n  '• <code>/futures &lt;pair&gt;</code> — Binance perpetual: mark/index, funding, open interest, & multi-timeframe',\n  '• <code>/ask &lt;pertanyaan&gt;</code> — Riset bebas Google News Live + Memori obrolan',\n  '• <code>/market</code> — Top 5 gainers & losers 24 jam (IDR)',\n  '',\n  '💼 <b>Portofolio & Posisi Aktif:</b>',\n  '• <code>/buy &lt;simbol&gt; [modal]</code> — Catat beli & pantau ketat (e.g. <code>/buy sol 150k</code>)',\n  '• <code>/stat &lt;simbol&gt;</code> — Evaluasi posisi: PnL, rekomendasi Hold/TP/SL/DCA',\n  '• <code>/sell &lt;simbol&gt;</code> — Tutup posisi, hitung PnL, keluarkan dari pantauan',\n  '• <code>/portfolio</code> — Ringkasan koin aktif, total modal, & PnL portofolio',\n  '• <code>/history [simbol]</code> — Riwayat analisis tersimpan di database lokal',\n  '• <code>/start</code> — Panduan interaktif & tutorial lengkap',\n  '',\n  '🔔 <i>Auto-Alert: Bot otomatis cek berkala dan kirim alert jika menyentuh TP/SL!</i>',\n  '⚠️ <i>Decision support only. Bukan saran finansial.</i>',\n].join('\\n');\nconst cfg = $('Config').first().json;\nreturn [{ json: { telegramMessage: msg, chatId: cfg.telegramChatId, botToken: cfg.botToken } }];"
+        "jsCode": "const msg = [\n  '📖 <b>Daftar Perintah Luna Hernandez Bot</b>',\n  '',\n  '🎯 <b>Riset & Rekomendasi:</b>',\n  '• <code>/rec coin|stock|futures</code> — Radar 3 kandidat per kelas aset (<code>/rec</code> = coin)',\n  '• <code>/risk &lt;simbol&gt; [modal]</code> — Kalkulator risiko, downside, & sizing modal',\n  '• <code>/news &lt;simbol&gt;</code> — Headline berita live terhangat & analisis sentimen AI',\n  '• <code>/coin &lt;simbol&gt;</code> — Deep analysis: RSI, MACD, Tren, Berita Live, & AI',\n  '• <code>/stock &lt;ticker&gt;</code> — Saham AS: multi-timeframe, SEC fundamental, DCF skenario, & berita',\n  '• <code>/futures &lt;pair&gt;</code> — Binance perpetual: mark/index, funding, open interest, & multi-timeframe',\n  '• <code>/ask &lt;pertanyaan&gt;</code> — Riset bebas Google News Live + Memori obrolan',\n  '• <code>/market</code> — Top 5 gainers & losers 24 jam (IDR)',\n  '',\n  '💼 <b>Portofolio & Posisi Aktif:</b>',\n  '• <code>/buy &lt;simbol&gt; [modal]</code> — Catat beli & pantau ketat (e.g. <code>/buy sol 150k</code>)',\n  '• <code>/stat &lt;simbol&gt;</code> — Evaluasi posisi: PnL, rekomendasi Hold/TP/SL/DCA',\n  '• <code>/sell &lt;simbol&gt;</code> — Tutup posisi, hitung PnL, keluarkan dari pantauan',\n  '• <code>/portfolio</code> — Ringkasan koin aktif, total modal, & PnL portofolio',\n  '• <code>/history [simbol]</code> — Riwayat analisis tersimpan di database lokal',\n  '• <code>/start</code> — Panduan interaktif & tutorial lengkap',\n  '',\n  '🔔 <i>Auto-Alert: Bot otomatis cek berkala dan kirim alert jika menyentuh TP/SL!</i>',\n  '⚠️ <i>Decision support only. Bukan saran finansial.</i>',\n].join('\\n');\nconst cfg = $('Config').first().json;\nreturn [{ json: { telegramMessage: msg, chatId: cfg.telegramChatId, botToken: cfg.botToken } }];"
       },
       "id": "B1001",
       "name": "Build Help",
@@ -2401,6 +2401,88 @@
     },
     {
       "parameters": {
+        "jsCode": "const update = $('Parse Incoming Message').first().json;\nconst cfg = $('Config').first().json;\nconst requested = (String(update.args || '').trim().split(/\\s+/)[0].toLowerCase() || 'coin');\nconst recommendationMode = /^(coin|stock|futures)$/.test(requested) ? requested : 'invalid';\nconst dbCmd = recommendationMode === 'stock' || recommendationMode === 'futures'\n  ? 'node /home/node/.n8n/market_analysis_cli.mjs recommend-' + recommendationMode\n  : '';\nconst telegramMessage = recommendationMode === 'invalid'\n  ? '❌ Format tidak dikenal. Gunakan <code>/rec coin</code>, <code>/rec stock</code>, atau <code>/rec futures</code>.\\n\\n<code>/rec</code> tanpa argumen tetap sama dengan <code>/rec coin</code>.'\n  : '';\nreturn [{ json: {\n  ...update,\n  recommendationMode,\n  dbCmd,\n  telegramMessage,\n  chatId: update.chatId || cfg.telegramChatId,\n  botToken: cfg.botToken,\n} }];"
+      },
+      "id": "R1001",
+      "name": "Prepare Recommendation",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        380,
+        1950
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "rules",
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.recommendationMode }}",
+                    "rightValue": "coin",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "coin"
+            },
+            {
+              "conditions": {
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.recommendationMode }}",
+                    "rightValue": "stock",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "stock"
+            },
+            {
+              "conditions": {
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.recommendationMode }}",
+                    "rightValue": "futures",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "futures"
+            }
+          ]
+        },
+        "fallbackOutput": "extra"
+      },
+      "id": "R1002",
+      "name": "Recommendation Type",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        620,
+        1950
+      ]
+    },
+    {
+      "parameters": {
         "url": "=https://api.coingecko.com/api/v3/coins/markets?vs_currency={{ $('Config').first().json.quoteCurrency }}&order=market_cap_desc&per_page=100&page=1&price_change_percentage=24h,7d",
         "sendHeaders": true,
         "headerParameters": {
@@ -2425,8 +2507,8 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
       "position": [
-        380,
-        1950
+        860,
+        1870
       ],
       "retryOnFail": true,
       "maxTries": 2,
@@ -2435,15 +2517,15 @@
     },
     {
       "parameters": {
-        "jsCode": "const cfg = $('Config').first().json;\nconst coins = $input.all().map(i => i.json);\n\nif (!coins.length || !coins[0] || !coins[0].id) {\n  return [{ json: { telegramMessage: '⏳ Data pasar sedang padat. Silakan coba /rec beberapa saat lagi.', chatId: cfg.telegramChatId, botToken: cfg.botToken } }];\n}\n\nconst stableSet = new Set(['usdt', 'usdc', 'dai', 'fdusd', 'usde', 'tusd', 'usdd', 'pyusd', 'bousd', 'wbtc', 'steth', 'weth', 'weeth', 'wsteth']);\n\nfunction fmt(val) {\n  if (val == null || !Number.isFinite(Number(val))) return 'Rp 0';\n  const v = Number(val);\n  const abs = Math.abs(v);\n  let maxDigits = 0;\n  if (abs < 0.0001) maxDigits = 8;\n  else if (abs < 0.01) maxDigits = 6;\n  else if (abs < 1) maxDigits = 4;\n  else if (abs < 1000) maxDigits = 2;\n  return new Intl.NumberFormat('id-ID', {\n    style: 'currency',\n    currency: 'IDR',\n    minimumFractionDigits: (maxDigits > 0 && abs < 1) ? 2 : 0,\n    maximumFractionDigits: maxDigits,\n  }).format(v);\n}\n\n// 1. Filter koin likuid non-stable yang memenuhi kriteria utama (Uptrend 7d + Koreksi Sehat 24h)\nconst screened = coins.filter(c => {\n  const sym = (c.symbol || '').toLowerCase();\n  if (stableSet.has(sym)) return false;\n  const p7d = c.price_change_percentage_7d_in_currency;\n  const p24h = c.price_change_percentage_24h;\n  if (typeof p7d !== 'number' || typeof p24h !== 'number') return false;\n  return p7d >= 2.5 && p24h <= -0.5 && p24h >= -8.5;\n});\n\nscreened.sort((a, b) => (b.price_change_percentage_7d_in_currency || 0) - (a.price_change_percentage_7d_in_currency || 0));\n\nlet picks = screened.slice(0, 3).map(c => ({ ...c, _isFallback: false }));\n\n// 2. Fallback jika kurang dari 3: ambil koin tren positif dengan momentum netral/konsolidasi\nif (picks.length < 3) {\n  const fallback = coins.filter(c => {\n    const sym = (c.symbol || '').toLowerCase();\n    if (stableSet.has(sym)) return false;\n    if (picks.some(p => p.id === c.id)) return false;\n    const p7d = c.price_change_percentage_7d_in_currency;\n    const p24h = c.price_change_percentage_24h;\n    return typeof p7d === 'number' && typeof p24h === 'number' && p7d >= 0 && p24h <= 1.0;\n  });\n  fallback.sort((a, b) => (b.price_change_percentage_7d_in_currency || 0) - (a.price_change_percentage_7d_in_currency || 0));\n  picks = picks.concat(fallback.slice(0, 3 - picks.length).map(c => ({ ...c, _isFallback: true })));\n}\n\nconst btc = coins.find(c => c.id === 'bitcoin' || (c.symbol || '').toLowerCase() === 'btc');\nconst btc24h = btc ? (btc.price_change_percentage_24h || 0) : 0;\nconst isBtcWeak = btc24h < -1.0;\n\nconst cards = picks.map((c, i) => {\n  const price = c.current_price || 0;\n  const p7d = Number((c.price_change_percentage_7d_in_currency || 0).toFixed(1));\n  const p24h = Number((c.price_change_percentage_24h || 0).toFixed(1));\n  const entryLow = fmt(price * 0.98);\n  const entryHigh = fmt(price);\n\n  let momText = '';\n  if (p24h <= -0.5) {\n    momText = '📉 24h: ' + p24h + '% (Diskon / Pullback)';\n  } else if (p24h <= 0) {\n    momText = '📉 24h: ' + p24h + '% (Konsolidasi Tipis)';\n  } else {\n    momText = '📈 24h: +' + p24h + '% (Konsolidasi / Akumulasi)';\n  }\n\n  // Estimasi momentum TP/SL awal\n  let slPct = 6.0;\n  let tpPct = 12.0;\n  if (p7d > 35 || Math.abs(p24h) > 6) {\n    slPct = 7.5;\n    tpPct = 18.0;\n  } else if (p7d < 15 && Math.abs(p24h) < 3) {\n    slPct = 5.0;\n    tpPct = 10.0;\n  }\n  const tp = fmt(price * (1 + tpPct / 100));\n  const sl = fmt(price * (1 - slPct / 100));\n  const rrText = (tpPct / slPct).toFixed(1);\n\n  const cardHeader = (i + 1) + '️⃣ <b>' + (c._isFallback ? '⚡ ' : '🎯 ') + c.symbol.toUpperCase() + ' (' + c.name + ')' + (c._isFallback ? ' — [Watchlist Alternatif]' : ' — [Pullback Sehat]') + '</b>';\n\n  return [\n    cardHeader,\n    '• Harga Sekarang: ' + fmt(price),\n    '• Momentum: 📈 7d: +' + p7d + '% | ' + momText,\n    '• Area Entry Ideal: ' + entryLow + ' – ' + entryHigh,\n    '• Estimasi TP (+' + tpPct + '%): ' + tp + ' | SL (-' + slPct + '%): ' + sl + ' (R:R 1:' + rrText + ')',\n    '👉 <i>Beli & pantau:</i> <code>/buy ' + c.symbol.toLowerCase() + ' 150k</code> | <code>/risk ' + c.symbol.toLowerCase() + '</code>',\n  ].join('\\n');\n});\n\nconst now = new Intl.DateTimeFormat('id-ID', { timeZone: cfg.timezone, timeStyle: 'short' }).format(new Date());\n\nconst btcNote = isBtcWeak\n  ? '\\n⚠️ <i>Catatan Makro: BTC sedang tertekan (' + btc24h.toFixed(1) + '% 24h). Gunakan koin di bawah sebagai Watchlist Pantau Pullback dengan alokasi defensif.</i>\\n'\n  : '';\n\nconst msg = [\n  '🎯 <b>Radar Rekomendasi Swing Entry Luna Hernandez</b>',\n  '<i>' + now + ' WIB | Kriteria: Uptrend Mingguan + Pullback / Akumulasi</i>',\n  btcNote,\n  cards.join('\\n\\n'),\n  '',\n  '💡 <i>Catatan: Level TP/SL di atas adalah estimasi momentum awal. Ketik <code>/risk &lt;simbol&gt;</code> untuk kalkulator ATR dinamis & sizing terukur.</i>\\n' +\n  '<i>Ketik <code>/buy &lt;simbol&gt; [modal]</code> untuk langsung memasukkan ke portofolio.</i>\\n' +\n  '⚠️ <i>Decision support only. Bukan saran finansial.</i>',\n].filter(Boolean).join('\\n');\n\nreturn [{ json: { telegramMessage: msg, chatId: cfg.telegramChatId, botToken: cfg.botToken } }];"
+        "jsCode": "const cfg = $('Config').first().json;\nconst coins = $input.all().map(i => i.json);\n\nif (!coins.length || !coins[0] || !coins[0].id) {\n  return [{ json: { telegramMessage: '⏳ Data pasar sedang padat. Silakan coba /rec beberapa saat lagi.', chatId: cfg.telegramChatId, botToken: cfg.botToken } }];\n}\n\nconst stableSet = new Set(['usdt', 'usdc', 'dai', 'fdusd', 'usde', 'tusd', 'usdd', 'pyusd', 'bousd', 'wbtc', 'steth', 'weth', 'weeth', 'wsteth']);\n\nfunction fmt(val) {\n  if (val == null || !Number.isFinite(Number(val))) return 'Rp 0';\n  const v = Number(val);\n  const abs = Math.abs(v);\n  let maxDigits = 0;\n  if (abs < 0.0001) maxDigits = 8;\n  else if (abs < 0.01) maxDigits = 6;\n  else if (abs < 1) maxDigits = 4;\n  else if (abs < 1000) maxDigits = 2;\n  return new Intl.NumberFormat('id-ID', {\n    style: 'currency',\n    currency: 'IDR',\n    minimumFractionDigits: (maxDigits > 0 && abs < 1) ? 2 : 0,\n    maximumFractionDigits: maxDigits,\n  }).format(v);\n}\n\n// 1. Filter koin likuid non-stable yang memenuhi kriteria utama (Uptrend 7d + Koreksi Sehat 24h)\nconst screened = coins.filter(c => {\n  const sym = (c.symbol || '').toLowerCase();\n  if (stableSet.has(sym)) return false;\n  const p7d = c.price_change_percentage_7d_in_currency;\n  const p24h = c.price_change_percentage_24h;\n  if (typeof p7d !== 'number' || typeof p24h !== 'number') return false;\n  return p7d >= 2.5 && p24h <= -0.5 && p24h >= -8.5;\n});\n\nscreened.sort((a, b) => (b.price_change_percentage_7d_in_currency || 0) - (a.price_change_percentage_7d_in_currency || 0));\n\nlet picks = screened.slice(0, 3).map(c => ({ ...c, _isFallback: false }));\n\n// 2. Fallback jika kurang dari 3: ambil koin tren positif dengan momentum netral/konsolidasi\nif (picks.length < 3) {\n  const fallback = coins.filter(c => {\n    const sym = (c.symbol || '').toLowerCase();\n    if (stableSet.has(sym)) return false;\n    if (picks.some(p => p.id === c.id)) return false;\n    const p7d = c.price_change_percentage_7d_in_currency;\n    const p24h = c.price_change_percentage_24h;\n    return typeof p7d === 'number' && typeof p24h === 'number' && p7d >= 0 && p24h <= 1.0;\n  });\n  fallback.sort((a, b) => (b.price_change_percentage_7d_in_currency || 0) - (a.price_change_percentage_7d_in_currency || 0));\n  picks = picks.concat(fallback.slice(0, 3 - picks.length).map(c => ({ ...c, _isFallback: true })));\n}\n\nconst btc = coins.find(c => c.id === 'bitcoin' || (c.symbol || '').toLowerCase() === 'btc');\nconst btc24h = btc ? (btc.price_change_percentage_24h || 0) : 0;\nconst isBtcWeak = btc24h < -1.0;\n\nconst cards = picks.map((c, i) => {\n  const price = c.current_price || 0;\n  const p7d = Number((c.price_change_percentage_7d_in_currency || 0).toFixed(1));\n  const p24h = Number((c.price_change_percentage_24h || 0).toFixed(1));\n  const entryLow = fmt(price * 0.98);\n  const entryHigh = fmt(price);\n\n  let momText = '';\n  if (p24h <= -0.5) {\n    momText = '📉 24h: ' + p24h + '% (Diskon / Pullback)';\n  } else if (p24h <= 0) {\n    momText = '📉 24h: ' + p24h + '% (Konsolidasi Tipis)';\n  } else {\n    momText = '📈 24h: +' + p24h + '% (Konsolidasi / Akumulasi)';\n  }\n\n  // Estimasi momentum TP/SL awal\n  let slPct = 6.0;\n  let tpPct = 12.0;\n  if (p7d > 35 || Math.abs(p24h) > 6) {\n    slPct = 7.5;\n    tpPct = 18.0;\n  } else if (p7d < 15 && Math.abs(p24h) < 3) {\n    slPct = 5.0;\n    tpPct = 10.0;\n  }\n  const tp = fmt(price * (1 + tpPct / 100));\n  const sl = fmt(price * (1 - slPct / 100));\n  const rrText = (tpPct / slPct).toFixed(1);\n\n  const cardHeader = (i + 1) + '️⃣ <b>' + (c._isFallback ? '⚡ ' : '🎯 ') + c.symbol.toUpperCase() + ' (' + c.name + ')' + (c._isFallback ? ' — [Watchlist Alternatif]' : ' — [Pullback Sehat]') + '</b>';\n\n  return [\n    cardHeader,\n    '• Harga Sekarang: ' + fmt(price),\n    '• Momentum: 📈 7d: +' + p7d + '% | ' + momText,\n    '• Area Entry Ideal: ' + entryLow + ' – ' + entryHigh,\n    '• Estimasi TP (+' + tpPct + '%): ' + tp + ' | SL (-' + slPct + '%): ' + sl + ' (R:R 1:' + rrText + ')',\n    '👉 <i>Beli & pantau:</i> <code>/buy ' + c.symbol.toLowerCase() + ' 150k</code> | <code>/risk ' + c.symbol.toLowerCase() + '</code>',\n  ].join('\\n');\n});\n\nconst now = new Intl.DateTimeFormat('id-ID', { timeZone: cfg.timezone, timeStyle: 'short' }).format(new Date());\n\nconst btcNote = isBtcWeak\n  ? '\\n⚠️ <i>Catatan Makro: BTC sedang tertekan (' + btc24h.toFixed(1) + '% 24h). Gunakan koin di bawah sebagai Watchlist Pantau Pullback dengan alokasi defensif.</i>\\n'\n  : '';\n\nconst msg = [\n  '🎯 <b>Radar Rekomendasi Crypto Spot Luna Hernandez</b>',\n  '<i>' + now + ' WIB | Kriteria: Uptrend Mingguan + Pullback / Akumulasi</i>',\n  btcNote,\n  cards.join('\\n\\n'),\n  '',\n  '💡 <i>Catatan: <code>/rec</code> sama dengan <code>/rec coin</code>. Level TP/SL di atas adalah estimasi momentum awal. Ketik <code>/risk &lt;simbol&gt;</code> untuk kalkulator ATR dinamis & sizing terukur.</i>\\n' +\n  '<i>Ketik <code>/buy &lt;simbol&gt; [modal]</code> untuk langsung memasukkan ke portofolio.</i>\\n' +\n  '⚠️ <i>Decision support only. Bukan saran finansial.</i>',\n].filter(Boolean).join('\\n');\n\nreturn [{ json: { telegramMessage: msg, chatId: cfg.telegramChatId, botToken: cfg.botToken } }];"
       },
       "id": "B8302",
       "name": "Format Rec Message",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        620,
-        1950
+        1100,
+        1870
       ]
     },
     {
@@ -2476,8 +2558,170 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
       "position": [
+        1340,
+        1870
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "executeOnce": false,
+        "command": "={{ $json.dbCmd }}"
+      },
+      "id": "R1003",
+      "name": "Execute Market Recommendations",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
         860,
+        2030
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx = $('Prepare Recommendation').first().json;\nconst rawInput = $input.first().json;\nconst rawText = String(rawInput.stdout || rawInput.error || rawInput.stderr || '').trim();\nlet parsed = null;\ntry {\n  const match = rawText.match(/\\{[\\s\\S]*\\}/);\n  if (match) parsed = JSON.parse(match[0]);\n} catch {}\nif (!parsed || typeof parsed !== 'object') {\n  parsed = { ok: false, error: { code: 'INVALID_PROVIDER_RESPONSE', message: 'CLI tidak mengembalikan JSON rekomendasi yang valid.', retryable: false } };\n}\nreturn [{ json: {\n  ...ctx,\n  recommendationOk: parsed?.ok === true && parsed?.recommendations != null,\n  recommendations: parsed?.recommendations || null,\n  recommendationError: parsed?.error || null,\n} }];"
+      },
+      "id": "R1004",
+      "name": "Parse Market Recommendations",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        2030
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.recommendationOk }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "R1005",
+      "name": "Market Recommendations OK?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1340,
+        2030
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx = $('Parse Market Recommendations').first().json;\nconst cfg = $('Config').first().json;\nconst result = ctx.recommendations;\nconst candidates = Array.isArray(result.candidates) ? result.candidates : [];\nconst fmt = (value, digits = 2) => value == null || !Number.isFinite(Number(value))\n  ? 'N/A'\n  : Number(value).toLocaleString('en-US', { maximumFractionDigits: digits });\nlet message;\nif (!candidates.length) {\n  message = [\n    '🟡 <b>Belum ada setup ' + ctx.recommendationMode.toUpperCase() + ' yang lolos filter</b>',\n    'Universe diperiksa: ' + (result.universeCount ?? result.evaluatedCount ?? 0) + '.',\n    'Tidak ada kandidat yang memenuhi tren, kualitas pullback, dan batas crowding saat ini.',\n    '',\n    '⚠️ <i>Filter tidak dilonggarkan hanya untuk memaksa munculnya rekomendasi.</i>',\n  ].join('\\n');\n} else if (result.assetClass === 'stock') {\n  const cards = candidates.map((candidate, index) => [\n    (index + 1) + '️⃣ <b>' + candidate.symbol + ' — ' + candidate.setup + '</b>',\n    '• Harga: $' + fmt(candidate.price, 4) + ' | Rank ' + fmt(candidate.rankScore, 1) + '/100',\n    '• Teknikal ' + fmt(candidate.factors.technicalScore, 1) + ' | RS20 vs SPY ' + fmt(candidate.factors.relativeStrength20d * 100, 2) + '%',\n    '• RSI ' + fmt(candidate.factors.rsi14, 1) + ' | ADX ' + fmt(candidate.factors.adx14, 1) + ' | %B ' + fmt(candidate.factors.bollingerPercentB, 2),\n    '• Support $' + fmt(candidate.factors.support, 4) + ' | Resistance $' + fmt(candidate.factors.resistance, 4),\n    '👉 <code>/stock ' + candidate.symbol + '</code>',\n  ].join('\\n')).join('\\n\\n');\n  message = [\n    '📈 <b>Radar Rekomendasi Saham AS</b>',\n    '<i>Alpaca IEX delayed | ' + result.successfulSymbols + '/' + result.universeCount + ' simbol terbaca</i>',\n    '',\n    cards,\n    '',\n    '⚠️ <i>Screening teknikal cepat; buka /stock untuk fundamental SEC dan DCF. Decision support only.</i>',\n  ].join('\\n');\n} else {\n  const cards = candidates.map((candidate, index) => {\n    const sideIcon = candidate.side === 'LONG' ? '🟢' : '🔴';\n    const noExecution = candidate.executionAllowed === false ? 'analysis-only' : 'status tidak valid';\n    return [\n      (index + 1) + '️⃣ ' + sideIcon + ' <b>' + candidate.symbol + ' — ' + candidate.side + ' ' + candidate.setup + '</b>',\n      '• Mark: ' + fmt(candidate.price, 6) + ' USDT | Rank ' + fmt(candidate.rankScore, 1) + '/100',\n      '• Teknikal ' + fmt(candidate.factors.technicalScore, 1) + ' | RSI ' + fmt(candidate.factors.rsi14, 1) + ' | ADX ' + fmt(candidate.factors.adx14, 1),\n      '• Funding ' + fmt(candidate.factors.fundingRatePct, 5) + '% | ΔOI ' + fmt(candidate.factors.oiChangePct, 2) + '% | ' + candidate.factors.oiRegime,\n      '• Support ' + fmt(candidate.factors.support, 6) + ' | Resistance ' + fmt(candidate.factors.resistance, 6),\n      '👉 <code>/futures ' + candidate.symbol + '</code> | ' + noExecution,\n    ].join('\\n');\n  }).join('\\n\\n');\n  message = [\n    '🧲 <b>Radar Rekomendasi Binance USD-M Futures</b>',\n    '<i>' + result.scannedCount + ' pair paling likuid dipindai | market data publik</i>',\n    '',\n    cards,\n    '',\n    '⛔ <i>Tidak ada order otomatis atau estimasi liquidation. Decision support only.</i>',\n  ].join('\\n');\n}\nreturn [{ json: { telegramMessage: message, chatId: cfg.telegramChatId, botToken: cfg.botToken } }];"
+      },
+      "id": "R1006",
+      "name": "Format Market Recommendations",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1580,
         1950
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx = $('Parse Market Recommendations').first().json;\nconst cfg = $('Config').first().json;\nconst error = ctx.recommendationError || {};\nconst messages = {\n  CONFIG_MISSING: 'Konfigurasi Alpaca belum lengkap. Isi ALPACA_API_KEY_ID dan ALPACA_API_SECRET untuk memakai <code>/rec stock</code>.',\n  RATE_LIMITED: 'Provider sedang membatasi request screener. Tunggu sebentar lalu coba lagi.',\n  ALPACA_UNAVAILABLE: 'Universe saham belum bisa diambil dari Alpaca.',\n  BINANCE_UNAVAILABLE: 'Universe futures belum bisa diambil dari Binance.',\n  PROVIDER_UNAVAILABLE: 'Respons provider tidak dapat diproses.',\n  INVALID_PROVIDER_RESPONSE: 'Format data provider berubah atau belum lengkap. Tidak ada rekomendasi yang dipaksakan.',\n  INSUFFICIENT_DATA: 'Candle tertutup belum cukup untuk menjalankan screener.',\n};\nreturn [{ json: {\n  telegramMessage: '❌ <b>Recommendation screener gagal</b> [' + (error.code || 'UNKNOWN') + ']\\n' + (messages[error.code] || 'Data kandidat tidak lengkap atau tidak valid.'),\n  chatId: cfg.telegramChatId,\n  botToken: cfg.botToken,\n} }];"
+      },
+      "id": "R1007",
+      "name": "Build Recommendation Error",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1580,
+        2110
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $json.botToken || $('Config').first().json.botToken }}/sendMessage",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ chat_id: $json.chatId || $('Config').first().json.telegramChatId, text: $json.telegramMessage, parse_mode: \"HTML\", disable_web_page_preview: true }) }}",
+        "options": {
+          "timeout": 15000,
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "R1008",
+      "name": "Send Market Recommendations",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1820,
+        1950
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $json.botToken || $('Config').first().json.botToken }}/sendMessage",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ chat_id: $json.chatId || $('Config').first().json.telegramChatId, text: $json.telegramMessage, parse_mode: \"HTML\", disable_web_page_preview: true }) }}",
+        "options": {
+          "timeout": 15000,
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "R1009",
+      "name": "Send Recommendation Usage",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        860,
+        2190
       ],
       "retryOnFail": true,
       "maxTries": 2,
@@ -3232,7 +3476,7 @@
         ],
         [
           {
-            "node": "CoinGecko Rec Markets",
+            "node": "Prepare Recommendation",
             "type": "main",
             "index": 0
           }
@@ -4061,6 +4305,49 @@
         ]
       ]
     },
+    "Prepare Recommendation": {
+      "main": [
+        [
+          {
+            "node": "Recommendation Type",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Recommendation Type": {
+      "main": [
+        [
+          {
+            "node": "CoinGecko Rec Markets",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Execute Market Recommendations",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Execute Market Recommendations",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send Recommendation Usage",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
     "CoinGecko Rec Markets": {
       "main": [
         [
@@ -4077,6 +4364,68 @@
         [
           {
             "node": "Send Rec Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute Market Recommendations": {
+      "main": [
+        [
+          {
+            "node": "Parse Market Recommendations",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Market Recommendations": {
+      "main": [
+        [
+          {
+            "node": "Market Recommendations OK?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Market Recommendations OK?": {
+      "main": [
+        [
+          {
+            "node": "Format Market Recommendations",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build Recommendation Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Market Recommendations": {
+      "main": [
+        [
+          {
+            "node": "Send Market Recommendations",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Recommendation Error": {
+      "main": [
+        [
+          {
+            "node": "Send Market Recommendations",
             "type": "main",
             "index": 0
           }
@@ -4322,7 +4671,7 @@
     "saveDataErrorExecution": "last",
     "saveDataSuccessExecution": "all"
   },
-  "versionId": "B9000000-0000-4000-8000-000000000007",
+  "versionId": "B9000000-0000-4000-8000-000000000008",
   "meta": {
     "templateCredsSetupCompleted": true
   },

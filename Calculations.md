@@ -32,7 +32,9 @@ flowchart TD
     C -->|/risk| E[Fetch Data OHLCV & BTC Gate]
     C -->|/buy| F[Fetch Harga & Kalkulasi Dynamic TP/SL]
     C -->|/stat /portfolio| G[Query SQLite Positions & Fetch Harga Live]
-    C -->|/rec| H[Screening Top 100 Pasar: Uptrend 7d & Pullback 24h]
+    C -->|/rec coin| H[CoinGecko Top 100: Uptrend 7d & Pullback 24h]
+    C -->|/rec stock| H2[Bounded Stock Universe + SPY]
+    C -->|/rec futures| H3[USD-M Liquidity Prefilter + 4H/OI]
     
     D --> I[Hitung Indikator Teknikal: RSI, MACD, BB, ATR, ADX, Vol]
     D --> J[Evaluasi BTC Macro Gate]
@@ -470,7 +472,39 @@ $$ROE\%=\frac{NetPnL}{Margin}\times100$$
 
 `FundingPaid` positif berarti biaya dan negatif berarti pendapatan. Leverage hanya memengaruhi margin/ROE, bukan gross PnL. Formula ini tersedia untuk pengujian/manual calculation dan belum dihubungkan ke eksekusi order.
 
-## 12. Persistensi, Cache, dan Batas Peran AI
+## 12. Radar Rekomendasi Multi-Market (`/rec`)
+
+`/rec` tanpa argumen diperlakukan sebagai `/rec coin` untuk menjaga kompatibilitas. Ketiga mode dibatasi maksimal tiga kandidat dan tidak memanggil Gemini.
+
+### 12.1. Coin
+
+Logika lama tetap dipakai: Top 100 CoinGecko disaring untuk menghapus stablecoin, lalu memilih aset dengan return 7 hari positif dan pullback/konsolidasi 24 jam. Jika kandidat utama kurang dari tiga, fallback hanya mengambil tren mingguan non-negatif; fallback diberi label watchlist alternatif.
+
+### 12.2. Stock
+
+Universe berasal dari `STOCK_REC_UNIVERSE`, dideduplikasi, divalidasi, dan dipotong maksimal 20 ticker. Default berisi 12 saham likuid. Setiap ticker dan SPY membutuhkan satu request candle harian Alpaca IEX yang dapat di-cache 30 menit.
+
+Saham hanya eligible bila harga berada di atas SMA50 dan SMA20 tidak berada di bawah SMA50. Rank dihitung sebagai:
+
+$$Rank_{stock}=0.55S_{1D}+0.25PullbackQuality+0.15RSScore+0.05\sqrt{\frac{DollarVolume}{DollarVolume_{max}}}$$
+
+`PullbackQuality` bernilai maksimum di sekitar Bollinger `%B = 0.5`, sementara `RSScore` memetakan relative strength 20 hari terhadap SPY ke skala 0–100. Dollar volume hanya berperan sebagai tie-breaker kecil karena volume IEX tidak mewakili consolidated SIP volume. Fundamental SEC dan DCF sengaja tidak dipanggil untuk seluruh universe; pengguna membuka `/stock <ticker>` pada kandidat terpilih.
+
+### 12.3. Futures
+
+Universe dibatasi pada kontrak Binance USD-M `PERPETUAL`, status `TRADING`, quote `USDT`, dan bukan pasangan stablecoin. Ticker diurutkan berdasarkan quote volume 24 jam, lalu hanya 12 teratas yang mengambil candle 4H dan tujuh observasi OI berinterval 4H agar perubahan OI dan harga memakai horizon sekitar 24 jam yang sebanding.
+
+Setup dapat berarah `LONG` atau `SHORT`. LONG mensyaratkan skor teknikal $\ge55$, harga di atas SMA50, SMA20 $\ge$ SMA50, dan Bollinger `%B` tidak lebih dari 0.85 agar tidak mengejar breakout yang terlalu jauh. SHORT memakai kondisi tren simetris dengan skor $\le45$ serta `%B` minimal 0.15 agar tidak mengejar penurunan dekat lower band. Funding yang terlalu padat searah posisi ($\ge0.05\%$ untuk LONG atau $\le-0.05\%$ untuk SHORT) mengeliminasi kandidat, sama dengan definisi crowding pada analisis `/futures`.
+
+Risk gate tambahan menolak kandidat bila ATR 4H melebihi 8%, perubahan harga absolut 24 jam melebihi 15%, atau absolute funding mencapai 0.15%. Gate ini mencegah squeeze/falling-knife ekstrem diberi label rekomendasi hanya karena skor tren masih tertinggal.
+
+$$TrendStrength=\begin{cases}S_{4H}&LONG\\100-S_{4H}&SHORT\end{cases}$$
+$$FundingPenalty=10\times\operatorname{clamp}\left(\frac{|Funding|}{0.0005},0,1\right)$$
+$$Rank_{futures}=0.65TrendStrength+0.25PullbackQuality+OI_{bonus}-FundingPenalty+0.05\sqrt{\frac{QuoteVolume}{QuoteVolume_{max}}}$$
+
+$OI_{bonus}=5$ bila open interest bertambah dan nol selain itu. Semua kandidat membawa `executionAllowed=false`; screener tidak menghitung liquidation dan tidak membuat order metadata.
+
+## 13. Persistensi, Cache, dan Batas Peran AI
 
 Analisis saham/futures disimpan di `market_analysis_sessions` dengan `asset_class`, provider, timestamp analisis, `as_of`, flag delayed, seluruh score, verdict, summary, dan payload JSON. `/history` menggabungkan tabel ini dengan tabel legacy `coin_sessions`, mengurutkan semuanya berdasarkan waktu terbaru.
 
@@ -478,7 +512,7 @@ Cache SQLite memakai TTL berdasarkan jenis data: Binance 1 menit, Alpaca intrada
 
 Gemini dipanggil satu kali setelah kalkulasi berhasil. Prompt menegaskan bahwa angka, direction, score, level, dan verdict adalah sumber kebenaran deterministik. Bila Gemini gagal, angka tetap dapat dipakai dan narasi diganti pesan fallback. Gemini tidak pernah menyimpan verdict hasil interpretasinya sendiri.
 
-## 13. Kesimpulan & Komitmen Integritas Sistem
+## 14. Kesimpulan & Komitmen Integritas Sistem
 
 1. **Konsistensi Total:** Angka yang keluar pada menu `/coin`, `/stock`, `/futures`, `/risk`, `/buy`, dan `/rec` berasal dari kalkulator deterministik, bukan dari prosa AI.
 2. **Keadilan Rasio:** Tidak ada rekomendasi entry yang memiliki rasio $R:R < 1 : 2.0$.

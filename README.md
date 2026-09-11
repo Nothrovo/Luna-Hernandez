@@ -42,10 +42,11 @@ Bot ini terintegrasi dengan **Telegram Webhook**, **n8n**, **Google Gemini 3.5 F
 - Dilengkapi ringkasan sentimen, potensi katalis, dan risiko regulasi/pasar oleh AI.
 - Contoh: `/news sol`, `/news btc`, atau `/news` untuk pasar global.
 
-### 6. 🎯 Radar Rekomendasi Swing Pullback (`/rec`)
-- Menyaring Top 100 koin pasar crypto secara efisien dalam satu panggilan API.
-- Memfilter koin likuid non-stablecoin yang berada dalam **Uptrend Mingguan (7d positif)** dan sedang mengalami **Pullback Sehat (koreksi 24h -1% s/d -8%)**.
-- Menampilkan 3 rekomendasi terbaik lengkap dengan area entry ideal, target TP/SL dinamis ($R:R \ge 2.0$), peringatan makro BTC, dan tombol pintas `/buy` & `/risk`.
+### 6. 🎯 Radar Rekomendasi Multi-Market (`/rec coin|stock|futures`)
+- **`/rec` atau `/rec coin`:** menyaring Top 100 CoinGecko untuk koin non-stable yang sedang uptrend mingguan dan mengalami pullback/konsolidasi 24 jam. Output lama tetap kompatibel, termasuk estimasi TP/SL serta pintasan `/buy` dan `/risk`.
+- **`/rec stock`:** memindai maksimal 20 ticker dari `STOCK_REC_UNIVERSE` (12 saham likuid secara default), lalu meranking tren harian, kualitas pullback, relative strength 20 hari terhadap SPY, dan average dollar volume IEX. Buka `/stock <ticker>` untuk fundamental SEC/DCF lengkap.
+- **`/rec futures`:** mengambil universe kontrak perpetual USDT aktif, memilih maksimal 12 pair dengan quote volume 24 jam terbesar, lalu meranking setup LONG maupun SHORT menggunakan tren 4H, pullback, funding crowding, perubahan OI, dan likuiditas.
+- Semua screener menghasilkan maksimal tiga kandidat secara deterministik, tidak memanggil Gemini, dan tidak memaksa hasil bila tidak ada setup yang lolos.
 
 ### 7. 🧠 Riset Bebas & Memori Percakapan (`/ask <pertanyaan>`)
 - Tanya apa saja seputar kondisi pasar, narasi crypto, atau kelanjutan analisis koin sebelumnya.
@@ -74,7 +75,7 @@ Bot ini terintegrasi dengan **Telegram Webhook**, **n8n**, **Google Gemini 3.5 F
 | `/futures <pair>` | Binance USD-M: MTF + basis + funding + open interest | `/futures BTCUSDT`, `/futures ETH` |
 | `/risk <simbol> [modal]` | Kalkulator skor risiko, downside, & kalkulasi nominal modal | `/risk sol 200k`, `/risk aero` |
 | `/news <simbol>` | Headline berita live terhangat & analisis sentimen AI | `/news sol`, `/news btc` |
-| `/rec` | Radar 3 rekomendasi koin pullback sehat untuk swing entry | `/rec` |
+| `/rec coin\|stock\|futures` | Radar maksimal 3 kandidat deterministik per kelas aset | `/rec`, `/rec stock`, `/rec futures` |
 | `/ask <pertanyaan>` | Tanya jawab pasar live Google News + memori percakapan | `/ask prospek solana minggu ini` |
 | `/market` | Top 5 gainers & losers 24 jam dalam IDR | `/market` |
 | `/buy <simbol> [modal]` | Catat beli koin & pantau ketat (mendukung auto-DCA) | `/buy sol 150k` |
@@ -124,7 +125,7 @@ Salin file `.env.example` ke `.env`:
 cp .env.example .env
 ```
 
-Isi `GEMINI_API_KEY`, `ALPACA_API_KEY_ID`, `ALPACA_API_SECRET`, dan `SEC_USER_AGENT` sesuai contoh. Bot token dan chat ID saat ini tetap dikelola pada Config workflow/build script.
+Isi `GEMINI_API_KEY`, `ALPACA_API_KEY_ID`, `ALPACA_API_SECRET`, dan `SEC_USER_AGENT` sesuai contoh. `STOCK_REC_UNIVERSE` bersifat opsional dan dibatasi maksimal 20 ticker. Bot token dan chat ID saat ini tetap dikelola pada Config workflow/build script.
 
 Sumber yang digunakan memang dapat diakses tanpa langganan berbayar: [Alpaca Basic](https://docs.alpaca.markets/docs/about-market-data-api) memberi feed IEX dengan batas paket gratis, sedangkan [SEC Company Facts](https://www.sec.gov/search-filings/edgar-application-programming-interfaces) tidak memerlukan API key tetapi wajib memakai identitas `User-Agent`. Endpoint market-data Binance tunduk pada rate limit dan ketersediaan regional provider.
 

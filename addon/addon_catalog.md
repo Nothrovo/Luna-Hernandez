@@ -7,6 +7,7 @@ Catalog ini adalah bahan referensi, bukan daftar dependency. Implementasi mengam
 | Pola dari catalog | Keputusan | Implementasi Midas |
 |---|---|---|
 | Automated Stock Analysis Reports: teknikal + news + LLM | Diterapkan | `/stock`, MTF deterministik, Google News 48 jam, satu sintesis Gemini |
+| Stock/futures market screener | Diterapkan | `/rec stock` memakai bounded watchlist; `/rec futures` memakai liquidity prefilter sebelum kalkulasi 4H/OI |
 | Technical stock analysis via Telegram/Airtable | Konsep diterapkan | Telegram dipertahankan; Airtable tidak ditambah karena SQLite sudah cukup |
 | AI Crew fundamental stock analysis | Konsep disederhanakan | Tidak memakai multi-agent runtime; SEC XBRL dihitung deterministik lalu Gemini hanya menarasikan |
 | Earnings-report RAG | Ditunda | Membutuhkan ingestion dokumen/embedding dan belum perlu untuk command on-demand |

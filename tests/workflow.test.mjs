@@ -94,3 +94,58 @@ test('market workflow keeps deterministic verdict outside Gemini and uses the lo
   assert.match(report, /analysis\.verdict/);
   assert.doesNotMatch(report, /(?:verdict|analysisVerdict)\s*=\s*[^;]*aiAnalysis/);
 });
+
+test('/rec supports coin, stock, and futures while plain /rec defaults to coin', async () => {
+  const names = new Set(workflow.nodes.map(node => node.name));
+  for (const required of [
+    'Prepare Recommendation',
+    'Recommendation Type',
+    'Execute Market Recommendations',
+    'Parse Market Recommendations',
+    'Format Market Recommendations',
+    'Send Market Recommendations',
+  ]) assert.ok(names.has(required), `missing recommendation node: ${required}`);
+
+  const prepareCode = workflow.nodes.find(node => node.name === 'Prepare Recommendation').parameters.jsCode;
+  assert.match(prepareCode, /coin\|stock\|futures/);
+  assert.match(prepareCode, /\|\| 'coin'/);
+  assert.match(prepareCode, /market_analysis_cli\.mjs recommend-/);
+
+  const recType = workflow.nodes.find(node => node.name === 'Recommendation Type');
+  assert.deepEqual(recType.parameters.rules.values.map(rule => rule.outputKey), ['coin', 'stock', 'futures']);
+  const formatCode = workflow.nodes.find(node => node.name === 'Format Market Recommendations').parameters.jsCode;
+  assert.match(formatCode, /executionAllowed/);
+  assert.doesNotMatch(formatCode, /Gemini|geminiBody/);
+});
+
+test('/rec preparation and futures formatter execute with n8n-compatible payloads', async () => {
+  const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
+  const prepareCode = workflow.nodes.find(node => node.name === 'Prepare Recommendation').parameters.jsCode;
+  const runPrepare = async args => new AsyncFunction('$', prepareCode)(name => ({
+    first: () => ({ json: name === 'Config'
+      ? { telegramChatId: '1', botToken: 'token' }
+      : { args, chatId: '1' } }),
+  }));
+  assert.equal((await runPrepare(''))[0].json.recommendationMode, 'coin');
+  assert.match((await runPrepare('stock'))[0].json.dbCmd, /recommend-stock$/);
+  assert.match((await runPrepare('futures'))[0].json.dbCmd, /recommend-futures$/);
+  assert.equal((await runPrepare('forex'))[0].json.recommendationMode, 'invalid');
+
+  const formatCode = workflow.nodes.find(node => node.name === 'Format Market Recommendations').parameters.jsCode;
+  const context = {
+    recommendationMode: 'futures',
+    recommendations: {
+      assetClass: 'crypto_perpetual', scannedCount: 1,
+      candidates: [{
+        symbol: 'BTCUSDT', side: 'LONG', setup: 'PULLBACK', price: 100,
+        rankScore: 75, executionAllowed: false,
+        factors: { technicalScore: 70, rsi14: 52, adx14: 28, fundingRatePct: 0.01, oiChangePct: 4, oiRegime: 'PRICE_UP_OI_UP', support: 95, resistance: 110 },
+      }],
+    },
+  };
+  const formatted = await new AsyncFunction('$', formatCode)(name => ({
+    first: () => ({ json: name === 'Config' ? { telegramChatId: '1', botToken: 'token' } : context }),
+  }));
+  assert.match(formatted[0].json.telegramMessage, /BTCUSDT — LONG PULLBACK/);
+  assert.match(formatted[0].json.telegramMessage, /analysis-only/);
+});

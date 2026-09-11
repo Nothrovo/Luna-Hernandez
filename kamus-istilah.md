@@ -201,6 +201,10 @@ Dokumen ini menjelaskan istilah teknis, indikator, dan strategi yang digunakan L
 * **Arti:** Selisih return 20 hari saham terhadap ETF SPY.
 * **Kenapa di Bot:** Membedakan saham yang naik karena pasar secara umum dari saham yang benar-benar mengungguli benchmark.
 
+### Recommendation Universe
+* **Arti:** Daftar saham yang memang diizinkan masuk proses screening.
+* **Kenapa di Bot:** `/rec stock` tidak mengklaim memindai seluruh bursa. Luna memeriksa maksimal 20 ticker dari `STOCK_REC_UNIVERSE`, sehingga cakupan, biaya request, dan hasilnya transparan.
+
 ---
 
 ## 6. Perpetual Futures
@@ -226,6 +230,10 @@ Dokumen ini menjelaskan istilah teknis, indikator, dan strategi yang digunakan L
 ### Open Interest (OI)
 * **Arti:** Total kontrak futures yang masih terbuka.
 * **Kenapa di Bot:** Perubahan OI dibaca bersama perubahan harga. Harga naik + OI naik berbeda makna dari harga naik + OI turun.
+
+### Liquidity Prefilter
+* **Arti:** Memilih kontrak dengan quote volume terbesar sebelum menjalankan indikator yang lebih mahal.
+* **Kenapa di Bot:** `/rec futures` hanya mengambil chart dan histori OI untuk maksimal 12 pair USD-M paling likuid, bukan melakukan puluhan request untuk seluruh kontrak.
 
 ### Crowding
 * **Arti:** Kondisi ketika terlalu banyak pelaku condong ke arah yang sama.

@@ -2,7 +2,9 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  fetchFuturesRecommendations,
   fetchFuturesMarketAnalysis,
+  fetchStockRecommendations,
   fetchStockMarketAnalysis,
   requestWithRetry,
 } from '../lib/market-providers.mjs';
@@ -124,4 +126,65 @@ test('futures provider rejects non-USDT quote pairs instead of silently rewritin
     fetchFuturesMarketAnalysis('BTCUSDC', { fetchJson: async () => ({}) }),
     error => error.code === 'INVALID_SYMBOL',
   );
+});
+
+test('stock recommendation provider scans only the configured bounded universe', async () => {
+  const calls = [];
+  const universe = ['AAA', 'BBB', 'CCC'];
+  const fetchJson = async (url, options = {}) => {
+    calls.push({ url, options });
+    const symbol = decodeURIComponent(url.match(/\/stocks\/([^/]+)\/bars/)?.[1] || '');
+    return alpacaBars(120, DAY, symbol, symbol === 'SPY' ? 0.05 : 0.25);
+  };
+  const result = await fetchStockRecommendations({
+    universe,
+    fetchJson,
+    nowMs: Date.UTC(2026, 8, 11, 12),
+    alpacaKey: 'free-key',
+    alpacaSecret: 'free-secret',
+  });
+
+  assert.equal(result.universeCount, 3);
+  assert.equal(calls.length, 4);
+  assert.ok(calls.every(call => call.url.includes('timeframe=1Day')));
+  assert.equal(calls.some(call => /sec\.gov|news\.google/.test(call.url)), false);
+});
+
+test('stock recommendation provider reports provider failure when every universe symbol fails', async () => {
+  await assert.rejects(
+    fetchStockRecommendations({
+      universe: ['AAA'],
+      fetchJson: async url => {
+        if (url.includes('/SPY/bars')) return alpacaBars(120, DAY, 'SPY', 0.05);
+        throw new Error('symbol feed down');
+      },
+      nowMs: Date.UTC(2026, 8, 11, 12),
+      alpacaKey: 'free-key',
+      alpacaSecret: 'free-secret',
+    }),
+    error => error.code === 'ALPACA_UNAVAILABLE' && error.retryable === true,
+  );
+});
+
+test('futures recommendation provider prefilters liquidity before bounded chart requests', async () => {
+  const calls = [];
+  const symbols = ['AAAUSDT', 'BBBUSDT', 'CCCUSDT', 'DDDUSDT'];
+  const fetchJson = async url => {
+    calls.push(url);
+    if (url.endsWith('/fapi/v1/exchangeInfo')) return { symbols: symbols.map(symbol => ({ symbol, contractType: 'PERPETUAL', status: 'TRADING', quoteAsset: 'USDT' })) };
+    if (url.endsWith('/fapi/v1/ticker/24hr')) return symbols.map((symbol, index) => ({ symbol, quoteVolume: String(1e9 - index * 1e8), priceChangePercent: '1' }));
+    if (url.endsWith('/fapi/v1/premiumIndex')) return symbols.map(symbol => ({ symbol, markPrice: '120', indexPrice: '119', lastFundingRate: '0.0001' }));
+    if (url.includes('/fapi/v1/klines')) return binanceKlines(140, 4 * HOUR);
+    if (url.includes('/futures/data/openInterestHist')) return [
+      { timestamp: 1, sumOpenInterestValue: '1000' },
+      { timestamp: 2, sumOpenInterestValue: '1100' },
+    ];
+    throw new Error(`unexpected URL ${url}`);
+  };
+
+  const result = await fetchFuturesRecommendations({ fetchJson, shortlistLimit: 3, nowMs: Date.UTC(2026, 8, 11, 12) });
+  assert.equal(result.scannedCount, 3);
+  assert.equal(calls.filter(url => url.includes('/fapi/v1/klines')).length, 3);
+  assert.equal(calls.filter(url => url.includes('/openInterestHist')).length, 3);
+  assert.equal(calls.some(url => /order|account/i.test(url)), false);
 });

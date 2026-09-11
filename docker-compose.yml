@@ -24,6 +24,7 @@ services:
       ALPACA_API_KEY_ID: "${ALPACA_API_KEY_ID:-}"
       ALPACA_API_SECRET: "${ALPACA_API_SECRET:-}"
       SEC_USER_AGENT: "${SEC_USER_AGENT:-Midas-Luna contact@example.com}"
+      STOCK_REC_UNIVERSE: "${STOCK_REC_UNIVERSE:-AAPL,MSFT,NVDA,AMZN,META,GOOGL,TSLA,AVGO,JPM,LLY,AMD,NFLX}"
     volumes:
       - ./docker/n8n-data:/home/node/.n8n
     extra_hosts:
