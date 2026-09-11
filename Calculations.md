@@ -301,6 +301,10 @@ Untuk input modal $M$ (default Rp 100.000 atau nominal kustom pengguna):
    $$\text{Loss}_{\text{IDR}} = \text{round}\left( M \times \frac{\text{dynSlPct}}{100} \right)$$
 4. **Potensi Keuntungan Nominal ($\text{Gain}_{\text{IDR}}$):**
    $$\text{Gain}_{\text{IDR}} = \text{round}\left( M \times \frac{\text{dynTpPct}}{100} \right)$$
+5. **Implikasi Ukuran Modal Portofolio (Model Van Tharp):**
+   Berdasarkan prinsip manajemen risiko profesional di mana toleransi kerugian satu posisi dibatasi maksimum $1\% - 2\%$ dari total ekuitas portofolio:
+   $$\text{Equity}_{\text{ideal, 2\%}} = \frac{\text{Loss}_{\text{IDR}}}{0.02}, \quad \text{Equity}_{\text{ideal, 1\%}} = \frac{\text{Loss}_{\text{IDR}}}{0.01}$$
+   Sistem menyajikan angka nominal ekuitas minimum ini agar trader memahami korelasi konkret antara alokasi koin dengan ketahanan modal keseluruhan.
 
 ---
 
@@ -311,44 +315,50 @@ Untuk setiap posisi terbuka di SQLite:
 $$\text{PnL}\% = \left( \frac{P_{\text{current}} - P_{\text{avg}}}{P_{\text{avg}}} \right) \times 100\%$$
 $$\text{PnL}_{\text{IDR}} = M_{\text{total}} \times \left( \frac{\text{PnL}\%}{100} \right)$$
 
-### 8.2. Dollar-Cost Averaging (Unit-Weighted Harmonic Average)
-Jika pengguna menambah alokasi modal pada koin yang sudah ada (`/buy <simbol> [modal]` ulang), harga beli rata-rata dihitung menggunakan rata-rata terbobot unit (*unit-weighted harmonic average*), bukan rata-rata harga aritmatika:
-$$Q_{\text{lama}} = \frac{M_{\text{lama}}}{P_{\text{lama}}}, \quad Q_{\text{baru}} = \frac{M_{\text{baru}}}{P_{\text{baru}}}$$
-$$Q_{\text{total}} = Q_{\text{lama}} + Q_{\text{baru}}$$
-$$M_{\text{total}} = M_{\text{lama}} + M_{\text{baru}}$$
-$$P_{\text{avg, baru}} = \frac{M_{\text{total}}}{Q_{\text{total}}} = \frac{M_{\text{lama}} + M_{\text{baru}}}{\frac{M_{\text{lama}}}{P_{\text{lama}}} + \frac{M_{\text{baru}}}{P_{\text{baru}}}}$$
+Jika salah satu atau beberapa koin mengalami kegagalan feed harga live (`priceData` null/stale), sistem mengisolasi posisi tersebut dan menampilkan **Valuasi Parsial**. Nilai total portofolio dan floating PnL hanya menghitung koin-koin dengan feed harga live valid, dan menandai total agregat secara transparan tanpa mengasumsikan PnL 0% semu.
 
-> **Catatan Integritas Matematis:**  
-> Formula aritmatika sederhana $(P_1 M_1 + P_2 M_2) / (M_1 + M_2)$ adalah kekeliruan matematis karena mengalikan harga dengan modal (menghasilkan dimensi harga $\times$ uang yang tidak bermakna). Dalam bursa riil, harga rata-rata selalu merupakan total uang tunai yang dibelanjakan dibagi total kuantitas unit aset yang dimiliki ($M_{\text{total}} / Q_{\text{total}}$).
+### 8.2. Dollar-Cost Averaging & Identitas Kanonikal (`coin_id`)
+Jika pengguna menambah alokasi modal pada koin yang sudah ada (`/buy <simbol> [modal]` ulang):
+1. **Identitas Kanonikal Aset:**
+   Posisi aktif dicocokkan menggunakan `coin_id` unik CoinGecko (misal: `solana`, `bittensor`), bukan sekadar simbol ticker, guna mengeliminasi risiko tabrakan nama token (*ticker collision*).
+2. **Harga Rata-Rata Unit-Weighted Harmonic Average:**
+   $$Q_{\text{lama}} = \frac{M_{\text{lama}}}{P_{\text{lama}}}, \quad Q_{\text{baru}} = \frac{M_{\text{baru}}}{P_{\text{baru}}}$$
+   $$Q_{\text{total}} = Q_{\text{lama}} + Q_{\text{baru}}$$
+   $$M_{\text{total}} = M_{\text{lama}} + M_{\text{baru}}$$
+   $$P_{\text{avg, baru}} = \frac{M_{\text{total}}}{Q_{\text{total}}} = \frac{M_{\text{lama}} + M_{\text{baru}}}{\frac{M_{\text{lama}}}{P_{\text{lama}}} + \frac{M_{\text{baru}}}{P_{\text{baru}}}}$$
 
 Sistem mengklasifikasikan transaksi DCA ke dalam buku besar (*ledger*):
 - **`DCA_AVERAGE_DOWN`**: jika $P_{\text{baru}} < P_{\text{lama}}$ (menurunkan harga pokok saat harga terkoreksi).
 - **`DCA_AVERAGE_UP`**: jika $P_{\text{baru}} \ge P_{\text{lama}}$ (menambah posisi saat tren menguat / *pyramiding*).
 Level Dynamic TP dan Dynamic SL secara otomatis dikalibrasi ulang terhadap $P_{\text{avg, baru}}$.
 
-### 8.3. Evaluasi Alert Otomatis & State Machine Anti-Spam (Siklus 30 Menit)
-Setiap 30 menit, cron job `manage_positions.mjs check-alerts` mengambil harga pasar live via CoinGecko:
-1. **Trigger Alert TP/SL:**
-   - Jika $P_{\text{current}} \ge \text{Price}_{\text{TP}}$ dan alert belum dikirim (atau telah di-*re-arm*): Notifikasi **TARGET PROFIT TERCAPAI 🎯** dikirimkan ke Telegram, dan kolom `tp_alerted_at` dicatat dengan timestamp ISO saat ini.
-   - Jika $P_{\text{current}} \le \text{Price}_{\text{SL}}$ dan alert belum dikirim (atau telah di-*re-arm*): Notifikasi **STOP LOSS TERPACU 🛑** dikirimkan ke Telegram, dan kolom `sl_alerted_at` dicatat dengan timestamp ISO saat ini.
-2. **Mekanisme Re-arming (Hysteresis 2%):**
-   - Alert TP di-*re-arm* (flag `tp_alerted_at` direset ke null) hanya jika harga terkoreksi kembali $\ge 2\%$ di bawah level TP ($P_{\text{current}} < \text{Price}_{\text{TP}} \times 0.98$).
-   - Alert SL di-*re-arm* (flag `sl_alerted_at` direset ke null) hanya jika harga pulih kembali $\ge 2\%$ di atas level SL ($P_{\text{current}} > \text{Price}_{\text{SL}} \times 1.02$).
-   - Mekanisme ini mengeliminasi *spam loop* notifikasi setiap 30 menit ketika harga berkonsolidasi di sekitar batas TP atau SL.
+### 8.3. Evaluasi Alert Otomatis & Decoupled State Machine (Siklus 30 Menit)
+Sistem memisahkan deteksi alert dari konfirmasi pengiriman (*decoupled acknowledgment*):
+1. **Tahap Deteksi (`check-alerts`):**
+   - Setiap 30 menit, cron job memeriksa harga pasar live via CoinGecko.
+   - Jika $P_{\text{current}} \ge \text{Price}_{\text{TP}}$ dan `tp_alerted_at` masih NULL: alert `TP_HIT` disiapkan.
+   - Jika $P_{\text{current}} \le \text{Price}_{\text{SL}}$ dan `sl_alerted_at` masih NULL: alert `SL_HIT` disiapkan.
+   - Pada tahap ini, database **TIDAK langsung diubah**, sehingga jika pengiriman pesan Telegram gagal (gangguan jaringan/rate limit), alert tetap berstatus *pending*.
+2. **Tahap Konfirmasi (`ack-alert <id> <type>`):**
+   - Node n8n mengeksekusi `ack-alert` hanya setelah pesan notifikasi Telegram berhasil terkirim ke pengguna.
+   - Kolom `tp_alerted_at` atau `sl_alerted_at` di SQLite diperbarui dengan timestamp ISO terkini.
+3. **Mekanisme Re-arming (Hysteresis 2%):**
+   - Alert TP di-*re-arm* (flag `tp_alerted_at` direset ke NULL) jika harga terkoreksi kembali $\ge 2\%$ di bawah level TP ($P_{\text{current}} < \text{Price}_{\text{TP}} \times 0.98$).
+   - Alert SL di-*re-arm* (flag `sl_alerted_at` direset ke NULL) jika harga pulih kembali $\ge 2\%$ di atas level SL ($P_{\text{current}} > \text{Price}_{\text{SL}} \times 1.02$).
 
-### 8.4. Realisasi Parsial & Audit Ledger (`position_transactions`)
-Mendukung perintah partial sell `/sell <simbol> [porsi]` (contoh: `/sell tia 50%`):
-1. **Kuantitas Dijual:** $Q_{\text{jual}} = Q_{\text{aktif}} \times \text{porsi}$.
-2. **Modal Terealisasi:** $M_{\text{realized}} = M_{\text{aktif}} \times \text{porsi}$.
-3. **Hasil Penjualan (Proceeds):** $\text{Proceeds} = Q_{\text{jual}} \times P_{\text{current}}$.
-4. **Realized PnL:** $\text{PnL}_{\text{IDR}} = \text{Proceeds} - M_{\text{realized}}$.
-5. **Pembaruan Posisi Aktif:**
-   - $Q_{\text{sisa}} = Q_{\text{aktif}} - Q_{\text{jual}}$
-   - $M_{\text{sisa}} = M_{\text{aktif}} - M_{\text{realized}}$
-   - Harga rata-rata ($P_{\text{avg}}$) tidak berubah karena posisi hanya dikurangi sebagian.
-   - Jika sisa kuantitas $\le 0$, status posisi ditutup (`closed`).
-6. **Audit Ledger Permanen (`position_transactions`):**
-   Setiap transaksi (`BUY_INITIAL`, `DCA_AVERAGE_DOWN`, `DCA_AVERAGE_UP`, `PARTIAL_SELL`, `CLOSE_SELL`) dicatat secara permanen dengan mencatat `position_id`, `type`, `price`, `amount_idr`, `quantity`, `realized_pnl_idr`, `realized_pnl_pct`, dan `created_at`.
+### 8.4. Realisasi Parsial, Validasi Ketat, & Transaksi Atomik
+Mendukung perintah partial sell `/sell <simbol> [porsi]` (contoh: `/sell tia 50%` atau `/sell btc 50k`):
+1. **Validasi Porsi Ketat (`INVALID_PORTION`):**
+   - Parameter porsi persen wajib memenuhi $0 < \text{porsi} \le 100\%$.
+   - Parameter nominal wajib memenuhi $0 < \text{nominal} \le M_{\text{total}}$.
+   - Input tidak valid (misal: `0%`, `150%`, string acak) ditolak seketika tanpa mengubah status posisi.
+2. **Kalkulasi Realisasi:**
+   - $Q_{\text{jual}} = Q_{\text{aktif}} \times \text{porsi}$
+   - $M_{\text{realized}} = M_{\text{aktif}} \times \text{porsi}$
+   - $\text{Proceeds} = Q_{\text{jual}} \times P_{\text{current}}$
+   - $\text{PnL}_{\text{IDR}} = \text{Proceeds} - M_{\text{realized}}$
+3. **Transaksi Atomik SQLite (`db.transaction`):**
+   Seluruh mutasi basis data (pembaruan tabel `user_positions` dan pencatatan audit ke `position_transactions`) dieksekusi di dalam satu blok transaksi atomik SQLite. Jika salah satu query gagal, sistem secara otomatis melakukan `ROLLBACK` menyeluruh untuk mencegah korupsi saldo atau catatan ledger yang hilang.
 
 ---
 

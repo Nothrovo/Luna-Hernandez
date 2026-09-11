@@ -89,11 +89,24 @@ function fetchJson(url) {
   });
 }
 
+function withTx(fn) {
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    const result = fn();
+    db.exec('COMMIT');
+    return result;
+  } catch (err) {
+    db.exec('ROLLBACK');
+    throw err;
+  }
+}
+
 (async () => {
   try {
     if (command === 'buy') {
-      const [simbolRaw, coinId, nama, hargaStr, modalStr, tpStr, slStr] = args;
+      const [simbolRaw, coinIdRaw, nama, hargaStr, modalStr, tpStr, slStr] = args;
       const simbol = (simbolRaw || '').toUpperCase().trim();
+      const coinId = (coinIdRaw || '').toLowerCase().trim();
       const hargaBeli = parseFloat(hargaStr) || 0;
       const modalIdr = parseFloat(modalStr) || 100000;
       const tpPrice = parseFloat(tpStr) || (hargaBeli * 1.12);
@@ -105,7 +118,10 @@ function fetchJson(url) {
       }
       
       const newQuantity = modalIdr / hargaBeli;
-      const existing = db.prepare("SELECT * FROM user_positions WHERE simbol = ? AND status = 'ACTIVE' LIMIT 1").get(simbol);
+      // Identify active position canonically by coin_id first to prevent ticker collisions
+      const existing = coinId
+        ? db.prepare("SELECT * FROM user_positions WHERE coin_id = ? AND status = 'ACTIVE' LIMIT 1").get(coinId)
+        : db.prepare("SELECT * FROM user_positions WHERE simbol = ? AND status = 'ACTIVE' LIMIT 1").get(simbol);
       const { tanggal, waktu } = nowTime();
       
       if (existing) {
@@ -127,18 +143,19 @@ function fetchJson(url) {
         const isUp = hargaBeli > oldPrice;
         const actionType = isUp ? 'DCA_AVERAGE_UP' : 'DCA_AVERAGE_DOWN';
         
-        // Reset alerted status on position update since basis has changed
-        db.prepare(`
-          UPDATE user_positions 
-          SET harga_beli = ?, modal_idr = ?, quantity = ?, target_profit = ?, stop_loss = ?, tp_alerted_at = NULL, sl_alerted_at = NULL 
-          WHERE id = ?
-        `).run(avgPrice, totalModal, totalQuantity, newTp, newSl, existing.id);
-        
-        // Record into transaction ledger
-        db.prepare(`
-          INSERT INTO position_transactions (position_id, simbol, coin_id, tipe, tanggal, waktu, harga, modal_idr, quantity, notes)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `).run(existing.id, simbol, coinId || existing.coin_id, actionType, tanggal, waktu, hargaBeli, modalIdr, newQuantity, 'DCA leg entry');
+        // Atomic transaction for DCA position update + ledger insert
+        withTx(() => {
+          db.prepare(`
+            UPDATE user_positions 
+            SET harga_beli = ?, modal_idr = ?, quantity = ?, target_profit = ?, stop_loss = ?, tp_alerted_at = NULL, sl_alerted_at = NULL 
+            WHERE id = ?
+          `).run(avgPrice, totalModal, totalQuantity, newTp, newSl, existing.id);
+          
+          db.prepare(`
+            INSERT INTO position_transactions (position_id, simbol, coin_id, tipe, tanggal, waktu, harga, modal_idr, quantity, notes)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `).run(existing.id, simbol, coinId || existing.coin_id, actionType, tanggal, waktu, hargaBeli, modalIdr, newQuantity, 'DCA leg entry');
+        });
         
         console.log(JSON.stringify({
           success: true,
@@ -158,19 +175,22 @@ function fetchJson(url) {
           slPct: Number((slPct * 100).toFixed(1)),
         }));
       } else {
-        // New position
-        const res = db.prepare(`
-          INSERT INTO user_positions (tanggal_beli, waktu_beli, simbol, coin_id, nama, harga_beli, modal_idr, quantity, target_profit, stop_loss, status)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ACTIVE')
-        `).run(tanggal, waktu, simbol, coinId || simbol.toLowerCase(), nama || simbol, hargaBeli, modalIdr, newQuantity, tpPrice, slPrice);
-        
-        const positionId = Number(res.lastInsertRowid);
-        
-        // Record into transaction ledger
-        db.prepare(`
-          INSERT INTO position_transactions (position_id, simbol, coin_id, tipe, tanggal, waktu, harga, modal_idr, quantity, notes)
-          VALUES (?, ?, ?, 'BUY', ?, ?, ?, ?, ?, 'Initial position entry')
-        `).run(positionId, simbol, coinId || simbol.toLowerCase(), tanggal, waktu, hargaBeli, modalIdr, newQuantity);
+        // Atomic transaction for new position insert + ledger insert
+        const positionId = withTx(() => {
+          const res = db.prepare(`
+            INSERT INTO user_positions (tanggal_beli, waktu_beli, simbol, coin_id, nama, harga_beli, modal_idr, quantity, target_profit, stop_loss, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ACTIVE')
+          `).run(tanggal, waktu, simbol, coinId || simbol.toLowerCase(), nama || simbol, hargaBeli, modalIdr, newQuantity, tpPrice, slPrice);
+          
+          const newPosId = Number(res.lastInsertRowid);
+          
+          db.prepare(`
+            INSERT INTO position_transactions (position_id, simbol, coin_id, tipe, tanggal, waktu, harga, modal_idr, quantity, notes)
+            VALUES (?, ?, ?, 'BUY', ?, ?, ?, ?, ?, 'Initial position entry')
+          `).run(newPosId, simbol, coinId || simbol.toLowerCase(), tanggal, waktu, hargaBeli, modalIdr, newQuantity);
+          
+          return newPosId;
+        });
         
         const tpPct = ((tpPrice - hargaBeli) / hargaBeli * 100).toFixed(1);
         const slPct = ((hargaBeli - slPrice) / hargaBeli * 100).toFixed(1);
@@ -190,16 +210,20 @@ function fetchJson(url) {
         }));
       }
     } else if (command === 'sell') {
-      const [simbolRaw, currentPriceStr, porsiStr] = args;
+      const [simbolRaw, currentPriceStr, porsiStr, coinIdArg] = args;
       const simbol = (simbolRaw || '').toUpperCase().trim();
       const currentPrice = parseFloat(currentPriceStr) || 0;
+      const coinId = (coinIdArg || '').toLowerCase().trim();
       
       if (!currentPrice || currentPrice <= 0 || !Number.isFinite(currentPrice)) {
         console.log(JSON.stringify({ success: false, error: 'INVALID_PRICE', message: 'Harga pasar live tidak valid atau tidak tersedia.' }));
         process.exit(0);
       }
       
-      const existing = db.prepare("SELECT * FROM user_positions WHERE simbol = ? AND status = 'ACTIVE' LIMIT 1").get(simbol);
+      // Match active position by coin_id first if available, otherwise by symbol
+      const existing = coinId
+        ? db.prepare("SELECT * FROM user_positions WHERE coin_id = ? AND status = 'ACTIVE' LIMIT 1").get(coinId)
+        : db.prepare("SELECT * FROM user_positions WHERE simbol = ? AND status = 'ACTIVE' LIMIT 1").get(simbol);
       if (!existing) {
         console.log(JSON.stringify({ success: false, error: 'NOT_FOUND', simbol }));
         process.exit(0);
@@ -210,20 +234,46 @@ function fetchJson(url) {
       const totalQuantity = Number(existing.quantity) > 0 ? Number(existing.quantity) : (totalModal / hargaBeli);
       const { tanggal, waktu } = nowTime();
       
-      // Parse porsi sell (default 100%)
+      // Parse porsi sell strictly (default 100% jika argumen kosong)
       let sellRatio = 1.0;
       let isPartial = false;
       const pRaw = (porsiStr || '').trim().toLowerCase();
       if (pRaw && pRaw !== 'all' && pRaw !== '100%') {
         if (pRaw.endsWith('%')) {
           const pct = parseFloat(pRaw.slice(0, -1));
-          if (pct > 0 && pct < 100) {
+          if (!Number.isFinite(pct) || pct <= 0 || pct > 100) {
+            console.log(JSON.stringify({ 
+              success: false, 
+              error: 'INVALID_PORTION', 
+              message: `Porsi jual ${porsiStr} tidak valid. Persentase harus antara 1% s/d 100%.` 
+            }));
+            process.exit(0);
+          }
+          if (pct < 100) {
             sellRatio = pct / 100;
             isPartial = true;
+          } else {
+            sellRatio = 1.0;
+            isPartial = false;
           }
         } else {
-          const nom = parseFloat(pRaw);
-          if (nom > 0 && nom < totalModal) {
+          let nomStr = pRaw;
+          if (nomStr.endsWith('k')) {
+            nomStr = (parseFloat(nomStr.slice(0, -1)) * 1000).toString();
+          }
+          const nom = parseFloat(nomStr);
+          if (!Number.isFinite(nom) || nom <= 0 || nom > totalModal) {
+            console.log(JSON.stringify({ 
+              success: false, 
+              error: 'INVALID_PORTION', 
+              message: `Nominal jual ${porsiStr} tidak valid. Nominal harus lebih dari Rp 0 dan maksimal modal aktif (Rp ${Math.round(totalModal).toLocaleString('id-ID')}).` 
+            }));
+            process.exit(0);
+          }
+          if (Math.abs(nom - totalModal) < 1) {
+            sellRatio = 1.0;
+            isPartial = false;
+          } else {
             sellRatio = nom / totalModal;
             isPartial = true;
           }
@@ -240,16 +290,19 @@ function fetchJson(url) {
         const remainingModal = totalModal - soldModal;
         const remainingQuantity = totalQuantity - soldQuantity;
         
-        db.prepare(`
-          UPDATE user_positions 
-          SET modal_idr = ?, quantity = ?
-          WHERE id = ?
-        `).run(remainingModal, remainingQuantity, existing.id);
-        
-        db.prepare(`
-          INSERT INTO position_transactions (position_id, simbol, coin_id, tipe, tanggal, waktu, harga, modal_idr, quantity, pnl_idr, pnl_persen, notes)
-          VALUES (?, ?, ?, 'PARTIAL_SELL', ?, ?, ?, ?, ?, ?, ?, ?)
-        `).run(existing.id, simbol, existing.coin_id, tanggal, waktu, currentPrice, soldModal, soldQuantity, pnlIdr, pnlPct, `Partial close ${(sellRatio * 100).toFixed(0)}%`);
+        // Atomic transaction for partial sell
+        withTx(() => {
+          db.prepare(`
+            UPDATE user_positions 
+            SET modal_idr = ?, quantity = ?
+            WHERE id = ?
+          `).run(remainingModal, remainingQuantity, existing.id);
+          
+          db.prepare(`
+            INSERT INTO position_transactions (position_id, simbol, coin_id, tipe, tanggal, waktu, harga, modal_idr, quantity, pnl_idr, pnl_persen, notes)
+            VALUES (?, ?, ?, 'PARTIAL_SELL', ?, ?, ?, ?, ?, ?, ?, ?)
+          `).run(existing.id, simbol, existing.coin_id, tanggal, waktu, currentPrice, soldModal, soldQuantity, pnlIdr, pnlPct, `Partial close ${(sellRatio * 100).toFixed(0)}%`);
+        });
         
         console.log(JSON.stringify({
           success: true,
@@ -267,17 +320,19 @@ function fetchJson(url) {
           totalReturn,
         }));
       } else {
-        // Full close
-        db.prepare(`
-          UPDATE user_positions 
-          SET status = 'CLOSED', tanggal_jual = ?, harga_jual = ?, pnl_persen = ?, pnl_idr = ? 
-          WHERE id = ?
-        `).run(tanggal, currentPrice, pnlPct, pnlIdr, existing.id);
-        
-        db.prepare(`
-          INSERT INTO position_transactions (position_id, simbol, coin_id, tipe, tanggal, waktu, harga, modal_idr, quantity, pnl_idr, pnl_persen, notes)
-          VALUES (?, ?, ?, 'CLOSE_SELL', ?, ?, ?, ?, ?, ?, ?, 'Full close position')
-        `).run(existing.id, simbol, existing.coin_id, tanggal, waktu, currentPrice, totalModal, totalQuantity, pnlIdr, pnlPct);
+        // Atomic transaction for full close
+        withTx(() => {
+          db.prepare(`
+            UPDATE user_positions 
+            SET status = 'CLOSED', tanggal_jual = ?, harga_jual = ?, pnl_persen = ?, pnl_idr = ? 
+            WHERE id = ?
+          `).run(tanggal, currentPrice, pnlPct, pnlIdr, existing.id);
+          
+          db.prepare(`
+            INSERT INTO position_transactions (position_id, simbol, coin_id, tipe, tanggal, waktu, harga, modal_idr, quantity, pnl_idr, pnl_persen, notes)
+            VALUES (?, ?, ?, 'CLOSE_SELL', ?, ?, ?, ?, ?, ?, ?, 'Full close position')
+          `).run(existing.id, simbol, existing.coin_id, tanggal, waktu, currentPrice, totalModal, totalQuantity, pnlIdr, pnlPct);
+        });
         
         console.log(JSON.stringify({
           success: true,
@@ -288,10 +343,10 @@ function fetchJson(url) {
           tanggalBeli: existing.tanggal_beli,
           hargaBeli,
           hargaJual: currentPrice,
-          modalIdr: totalModal,
+          modalAwal: totalModal,
+          totalReturn,
           pnlPct,
           pnlIdr,
-          totalReturn,
         }));
       }
     } else if (command === 'get-active') {
@@ -308,15 +363,8 @@ function fetchJson(url) {
       const rows = db.prepare("SELECT * FROM user_positions WHERE status = 'ACTIVE' ORDER BY id DESC").all();
       console.log(JSON.stringify({ count: rows.length, positions: rows }));
     } else if (command === 'history') {
-      const [simbolRaw] = args;
-      const simbol = (simbolRaw || '').toUpperCase().trim();
-      let txs;
-      if (simbol) {
-        txs = db.prepare("SELECT * FROM position_transactions WHERE simbol = ? ORDER BY id DESC LIMIT 20").all(simbol);
-      } else {
-        txs = db.prepare("SELECT * FROM position_transactions ORDER BY id DESC LIMIT 25").all();
-      }
-      console.log(JSON.stringify({ count: txs.length, transactions: txs }));
+      const rows = db.prepare("SELECT * FROM position_transactions ORDER BY id DESC LIMIT 50").all();
+      console.log(JSON.stringify({ count: rows.length, transactions: rows }));
     } else if (command === 'check-alerts') {
       const rows = db.prepare("SELECT * FROM user_positions WHERE status = 'ACTIVE'").all();
       if (!rows.length) {
@@ -334,8 +382,6 @@ function fetchJson(url) {
       }
       
       const alerts = [];
-      const { tanggal, waktu } = nowTime();
-      const nowStamp = `${tanggal} ${waktu}`;
       
       for (const pos of rows) {
         const p = priceData[pos.coin_id]?.idr;
@@ -346,10 +392,11 @@ function fetchJson(url) {
         const sl = Number(pos.stop_loss);
         const pnlPct = Number(((p - buyPrice) / buyPrice * 100).toFixed(1));
         
-        // 1. Target Profit Hit Check
+        // 1. Target Profit Hit Check (Decoupled: do NOT persist alert timestamp before Telegram delivery)
         if (p >= tp) {
           if (!pos.tp_alerted_at) {
             alerts.push({
+              positionId: pos.id,
               type: 'TP_HIT',
               simbol: pos.simbol,
               nama: pos.nama,
@@ -357,17 +404,17 @@ function fetchJson(url) {
               targetProfit: tp,
               pnlPct,
             });
-            db.prepare("UPDATE user_positions SET tp_alerted_at = ? WHERE id = ?").run(nowStamp, pos.id);
           }
         } else if (pos.tp_alerted_at && p < tp * 0.98) {
           // Re-arm TP alert if price retreats 2% below TP
           db.prepare("UPDATE user_positions SET tp_alerted_at = NULL WHERE id = ?").run(pos.id);
         }
         
-        // 2. Stop Loss Hit Check
+        // 2. Stop Loss Hit Check (Decoupled: do NOT persist alert timestamp before Telegram delivery)
         if (p <= sl) {
           if (!pos.sl_alerted_at) {
             alerts.push({
+              positionId: pos.id,
               type: 'SL_HIT',
               simbol: pos.simbol,
               nama: pos.nama,
@@ -375,7 +422,6 @@ function fetchJson(url) {
               stopLoss: sl,
               pnlPct,
             });
-            db.prepare("UPDATE user_positions SET sl_alerted_at = ? WHERE id = ?").run(nowStamp, pos.id);
           }
         } else if (pos.sl_alerted_at && p > sl * 1.02) {
           // Re-arm SL alert if price recovers 2% above SL
@@ -383,6 +429,22 @@ function fetchJson(url) {
         }
       }
       console.log(JSON.stringify({ alertCount: alerts.length, alerts }));
+    } else if (command === 'ack-alert') {
+      const [posIdStr, alertType] = args;
+      const posId = parseInt(posIdStr, 10);
+      const type = (alertType || '').toUpperCase().trim();
+      if (!posId || (type !== 'TP' && type !== 'SL' && type !== 'TP_HIT' && type !== 'SL_HIT')) {
+        console.log(JSON.stringify({ success: false, error: 'INVALID_ACK_ARGS' }));
+        process.exit(0);
+      }
+      const { tanggal, waktu } = nowTime();
+      const nowStamp = `${tanggal} ${waktu}`;
+      if (type === 'TP' || type === 'TP_HIT') {
+        db.prepare("UPDATE user_positions SET tp_alerted_at = ? WHERE id = ?").run(nowStamp, posId);
+      } else {
+        db.prepare("UPDATE user_positions SET sl_alerted_at = ? WHERE id = ?").run(nowStamp, posId);
+      }
+      console.log(JSON.stringify({ success: true, positionId: posId, acknowledged: type, timestamp: nowStamp }));
     } else {
       console.log(JSON.stringify({ error: 'UNKNOWN_COMMAND' }));
     }
