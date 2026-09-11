@@ -1,6 +1,6 @@
 # 📖 Kamus Istilah & Singkatan Teknis Bot Midas (Luna Hernandez)
 
-Dokumen ini disusun untuk memudahkan pemahaman seluruh istilah teknis, indikator, dan strategi trading yang digunakan di bot **Luna Hernandez** dan dokumen riset trading kita.
+Dokumen ini menjelaskan istilah teknis, indikator, dan strategi yang digunakan Luna pada crypto spot, saham AS, dan crypto perpetual futures.
 
 ---
 
@@ -170,3 +170,73 @@ Dokumen ini disusun untuk memudahkan pemahaman seluruh istilah teknis, indikator
 * **Arti:** Uji coba masa lalu & simulasi tanpa uang asli.
   * **Backtesting:** Menguji aturan bot memakai data grafik beberapa tahun ke belakang untuk melihat apakah strateginya menguntungkan.
   * **Paper Trading:** Mencatat transaksi simulasi menggunakan catatan di bot (seperti database SQLite di bot Luna) tanpa mempertaruhkan uang sungguhan dulu sampai terbiasa.
+
+---
+
+## 5. Saham & Fundamental
+
+### Ticker
+* **Arti:** Kode singkat saham, misalnya `AAPL` atau `NVDA`.
+* **Kenapa di Bot:** Menjadi identitas input `/stock`. Ticker berbeda dari nama perusahaan dan dapat mengandung titik atau tanda hubung.
+
+### IEX vs SIP
+* **IEX:** Satu bursa saham AS yang datanya tersedia pada paket gratis Alpaca Basic.
+* **SIP:** Consolidated tape yang menggabungkan transaksi seluruh bursa utama AS.
+* **Kenapa Penting:** Feed IEX gratis bukan gambaran volume/price discovery seluruh pasar. Luna menandai laporan saham sebagai `DELAYED` dan tidak menyamarkannya sebagai SIP.
+
+### SEC EDGAR / Company Facts
+* **Arti:** Database publik laporan emiten AS. Company Facts menyajikan fakta XBRL dari 10-K/10-Q dalam JSON.
+* **Kenapa di Bot:** Sumber revenue, net income, arus kas, aset, liabilitas, ekuitas, kas, utang, dan saham beredar untuk perhitungan fundamental manual.
+
+### Free Cash Flow (FCF)
+* **Arti:** Kas operasi yang tersisa setelah belanja modal.
+* **Formula Luna:** `FCF = Operating Cash Flow - |Capital Expenditure|`.
+* **Kenapa di Bot:** Dipakai untuk FCF margin, FCF yield, dan DCF.
+
+### DCF (Discounted Cash Flow)
+* **Arti:** Model yang mengubah proyeksi arus kas masa depan menjadi nilai hari ini menggunakan discount rate.
+* **Kenapa di Bot:** Luna menampilkan skenario bear/base/bull yang transparan. Hasilnya indikatif karena kualitas tag XBRL dan asumsi pertumbuhan berbeda antar-emiten.
+
+### Relative Strength vs SPY
+* **Arti:** Selisih return 20 hari saham terhadap ETF SPY.
+* **Kenapa di Bot:** Membedakan saham yang naik karena pasar secara umum dari saham yang benar-benar mengungguli benchmark.
+
+---
+
+## 6. Perpetual Futures
+
+### Perpetual Futures
+* **Arti:** Kontrak derivatif tanpa tanggal jatuh tempo yang mengikuti harga aset acuan melalui mekanisme funding.
+* **Kenapa di Bot:** `/futures` menganalisis kontrak Binance USD-M berquote USDT. Fitur ini hanya analisis dan tidak mengirim order.
+
+### Mark Price & Index Price
+* **Index Price:** Harga acuan gabungan pasar spot.
+* **Mark Price:** Harga referensi bursa untuk perhitungan unrealized PnL dan mekanisme liquidation.
+* **Kenapa di Bot:** Selisih keduanya dihitung sebagai basis; Luna tidak mengganti mark price dengan harga spot biasa.
+
+### Basis
+* **Arti:** Selisih relatif mark price terhadap index price.
+* **Formula:** `Basis% = (Mark / Index - 1) × 100`.
+* **Interpretasi:** Basis positif berarti kontrak berada di atas indeks; basis negatif berarti di bawah indeks.
+
+### Funding Rate
+* **Arti:** Pembayaran berkala antara pemegang posisi long dan short agar harga perpetual tetap dekat indeks.
+* **Kenapa di Bot:** Luna membandingkan funding terbaru dengan histori melalui percentile dan z-score untuk mendeteksi posisi pasar yang terlalu padat.
+
+### Open Interest (OI)
+* **Arti:** Total kontrak futures yang masih terbuka.
+* **Kenapa di Bot:** Perubahan OI dibaca bersama perubahan harga. Harga naik + OI naik berbeda makna dari harga naik + OI turun.
+
+### Crowding
+* **Arti:** Kondisi ketika terlalu banyak pelaku condong ke arah yang sama.
+* **Kenapa di Bot:** Sinyal long/short yang searah crowding funding ekstrem diturunkan menjadi `HOLD`, karena risiko unwind atau squeeze meningkat.
+
+### LONG, SHORT, dan NEUTRAL
+* **LONG:** Bias mendapat keuntungan bila harga naik.
+* **SHORT:** Bias mendapat keuntungan bila harga turun.
+* **NEUTRAL:** Tidak ada keunggulan arah yang cukup kuat.
+* **Kenapa di Bot:** Ketiganya adalah enum kanonikal untuk mencegah inkonsistensi istilah. Verdict histori tetap `BUY`, `SELL`, atau `HOLD`.
+
+### Liquidation Price
+* **Arti:** Perkiraan level saat margin posisi tidak lagi cukup menurut aturan bursa.
+* **Kenapa Tidak Dihitung Luna:** Nilainya memerlukan maintenance-margin tier, fee, wallet balance, posisi silang/isolated, dan aturan bursa aktual. Tanpa semua input itu, angka liquidation akan menyesatkan.

@@ -1,6 +1,6 @@
 {
   "id": "RzqHFpZWsPL7CsM1",
-  "name": "Luna Hernandez — Realtime Webhook Assistant",
+  "name": "Luna Hernandez — Multi-Market Decision Support",
   "nodes": [
     {
       "parameters": {
@@ -100,6 +100,40 @@
               },
               "renameOutput": true,
               "outputKey": "coin"
+            },
+            {
+              "conditions": {
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.command }}",
+                    "rightValue": "stock",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "stock"
+            },
+            {
+              "conditions": {
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.command }}",
+                    "rightValue": "futures",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "futures"
             },
             {
               "conditions": {
@@ -320,7 +354,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const update = $('Parse Incoming Message').first().json;\nconst cfg = $('Config').first().json;\nconst userName = update.from || 'Trader';\n\nconst msg = [\n  '👋 <b>Halo ' + userName + '! Gue Luna Hernandez.</b>',\n  'Asisten decision support & riset crypto personal lo.',\n  '',\n  'Gue di sini buat bantu lo menganalisis pasar sebelum eksekusi, baik koin besar (BTC/ETH) maupun koin gorengan/altcoin cepat.',\n  '',\n  '🚀 <b>Fitur Utama Luna Hernandez Bot:</b>',\n  '',\n  '1️⃣ <b>Deep Analysis Koin</b> <code>/coin &lt;simbol&gt;</code>',\n  'Hitung teknikal komprehensif (RSI, MACD, BB, ADX, SMA20), <b>browsing 10 berita Google News live</b>, histori SQLite, & dirangkum AI Gemini.',\n  '👉 <i>Coba:</i> <code>/coin sol</code>, <code>/coin aero</code>, <code>/coin btc</code>',\n  '',\n  '2️⃣ <b>Kalkulator Risiko & Tactical Sizing</b> <code>/risk &lt;simbol&gt; [modal]</code>',\n  'Hitung skor risiko 1-10, downside ke SMA20/Lower BB, TP/SL dinamis (R:R min 1:2.0), & kalkulasi modal nominal untuk risk-taker.',\n  '👉 <i>Coba:</i> <code>/risk sol 200k</code>, <code>/risk aero</code>',\n  '',\n  '3️⃣ <b>Riset Bebas Live + Memori</b> <code>/ask &lt;pertanyaan&gt;</code>',\n  'Tanya kondisi pasar atau sentimen. Bot <b>browsing Google News live</b> + <b>ingat percakapan sebelumnya</b>.',\n  '👉 <i>Coba:</i> <code>/ask bagaimana peluang swing trading minggu ini?</code>',\n  '',\n  '4️⃣ <b>Radar Pasar & Rekomendasi</b>',\n  '• <code>/rec</code> — 3 rekomendasi koin pullback sehat untuk swing entry',\n  '• <code>/news &lt;simbol&gt;</code> — Headline berita live & analisis sentimen AI (e.g. <code>/news sol</code>)',\n  '• <code>/market</code> — Top 5 gainers & losers 24 jam dalam IDR',\n  '',\n  '5️⃣ <b>Manajemen Posisi & Portofolio</b>',\n  '• <code>/buy &lt;simbol&gt; [modal]</code> — Catat beli & pantau ketat (e.g. <code>/buy sol 150k</code>)',\n  '• <code>/stat &lt;simbol&gt;</code> — Evaluasi posisi: PnL, rekomendasi Hold/TP/SL/DCA',\n  '• <code>/sell &lt;simbol&gt;</code> — Tutup posisi, hitung PnL, & unlist dari pantauan',\n  '• <code>/portfolio</code> — Ringkasan koin aktif, total modal, & PnL portofolio',\n  '• <code>/history &lt;simbol&gt;</code> — Cek riwayat analisis tersimpan',\n  '',\n  '🔔 <i>Auto-Alert: Bot otomatis cek setiap 30 menit dan kirim notifikasi saat TP/SL tersentuh!</i>',\n  '⚠️ <i>Decision support only, bukan saran finansial.</i>',\n  '',\n  'Ketik <code>/help</code> kapan saja untuk melihat ringkasan perintah.',\n].join('\\n');\n\nreturn [{ json: { telegramMessage: msg, chatId: cfg.telegramChatId, botToken: cfg.botToken } }];"
+        "jsCode": "const update = $('Parse Incoming Message').first().json;\nconst cfg = $('Config').first().json;\nconst userName = update.from || 'Trader';\n\nconst msg = [\n  '👋 <b>Halo ' + userName + '! Gue Luna Hernandez.</b>',\n  'Asisten decision support & riset multi-market personal lo.',\n  '',\n  'Gue bantu lo menganalisis crypto spot, saham AS, dan Binance USD-M perpetual sebelum mengambil keputusan.',\n  '',\n  '🚀 <b>Fitur Utama Luna Hernandez Bot:</b>',\n  '',\n  '1️⃣ <b>Deep Analysis Koin</b> <code>/coin &lt;simbol&gt;</code>',\n  'Hitung teknikal komprehensif (RSI, MACD, BB, ADX, SMA20), <b>browsing 10 berita Google News live</b>, histori SQLite, & dirangkum AI Gemini.',\n  '👉 <i>Coba:</i> <code>/coin sol</code>, <code>/coin aero</code>, <code>/coin btc</code>',\n  '',\n  '2️⃣ <b>Analisis Saham AS</b> <code>/stock &lt;ticker&gt;</code>',\n  'Multi-timeframe 1H/4H/1D/1W, relative strength vs SPY, fundamental SEC, DCF tiga skenario, dan berita 48 jam.',\n  '👉 <i>Coba:</i> <code>/stock AAPL</code>, <code>/stock NVDA</code>',\n  '',\n  '3️⃣ <b>Analisis Futures Perpetual</b> <code>/futures &lt;pair&gt;</code>',\n  'Multi-timeframe 15m/1H/4H/1D, mark/index basis, funding, open interest, dan crowding. <b>Analysis-only, tidak mengeksekusi order.</b>',\n  '👉 <i>Coba:</i> <code>/futures BTCUSDT</code>, <code>/futures ETH</code>',\n  '',\n  '4️⃣ <b>Kalkulator Risiko & Tactical Sizing</b> <code>/risk &lt;simbol&gt; [modal]</code>',\n  'Hitung skor risiko 1-10, downside ke SMA20/Lower BB, TP/SL dinamis (R:R min 1:2.0), & kalkulasi modal nominal untuk risk-taker.',\n  '👉 <i>Coba:</i> <code>/risk sol 200k</code>, <code>/risk aero</code>',\n  '',\n  '5️⃣ <b>Riset Bebas Live + Memori</b> <code>/ask &lt;pertanyaan&gt;</code>',\n  'Tanya kondisi pasar atau sentimen. Bot <b>browsing Google News live</b> + <b>ingat percakapan sebelumnya</b>.',\n  '👉 <i>Coba:</i> <code>/ask bagaimana peluang swing trading minggu ini?</code>',\n  '',\n  '6️⃣ <b>Radar Pasar & Rekomendasi</b>',\n  '• <code>/rec</code> — 3 rekomendasi koin pullback sehat untuk swing entry',\n  '• <code>/news &lt;simbol&gt;</code> — Headline berita live & analisis sentimen AI (e.g. <code>/news sol</code>)',\n  '• <code>/market</code> — Top 5 gainers & losers 24 jam dalam IDR',\n  '',\n  '7️⃣ <b>Manajemen Posisi & Portofolio Crypto</b>',\n  '• <code>/buy &lt;simbol&gt; [modal]</code> — Catat beli & pantau ketat (e.g. <code>/buy sol 150k</code>)',\n  '• <code>/stat &lt;simbol&gt;</code> — Evaluasi posisi: PnL, rekomendasi Hold/TP/SL/DCA',\n  '• <code>/sell &lt;simbol&gt;</code> — Tutup posisi, hitung PnL, & unlist dari pantauan',\n  '• <code>/portfolio</code> — Ringkasan koin aktif, total modal, & PnL portofolio',\n  '• <code>/history [simbol]</code> — Cek riwayat analisis semua kelas aset',\n  '',\n  '🔔 <i>Auto-Alert: Bot otomatis cek setiap 30 menit dan kirim notifikasi saat TP/SL tersentuh!</i>',\n  '⚠️ <i>Decision support only, bukan saran finansial.</i>',\n  '',\n  'Ketik <code>/help</code> kapan saja untuk melihat ringkasan perintah.',\n].join('\\n');\n\nreturn [{ json: { telegramMessage: msg, chatId: cfg.telegramChatId, botToken: cfg.botToken } }];"
       },
       "id": "B1000",
       "name": "Build Start",
@@ -371,7 +405,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const msg = [\n  '📖 <b>Daftar Perintah Luna Hernandez Bot</b>',\n  '',\n  '🎯 <b>Riset & Rekomendasi:</b>',\n  '• <code>/rec</code> — Rekomendasi 3 koin pullback sehat untuk swing entry',\n  '• <code>/risk &lt;simbol&gt; [modal]</code> — Kalkulator risiko, downside, & sizing modal',\n  '• <code>/news &lt;simbol&gt;</code> — Headline berita live terhangat & analisis sentimen AI',\n  '• <code>/coin &lt;simbol&gt;</code> — Deep analysis: RSI, MACD, Tren, Berita Live, & AI',\n  '• <code>/ask &lt;pertanyaan&gt;</code> — Riset bebas Google News Live + Memori obrolan',\n  '• <code>/market</code> — Top 5 gainers & losers 24 jam (IDR)',\n  '',\n  '💼 <b>Portofolio & Posisi Aktif:</b>',\n  '• <code>/buy &lt;simbol&gt; [modal]</code> — Catat beli & pantau ketat (e.g. <code>/buy sol 150k</code>)',\n  '• <code>/stat &lt;simbol&gt;</code> — Evaluasi posisi: PnL, rekomendasi Hold/TP/SL/DCA',\n  '• <code>/sell &lt;simbol&gt;</code> — Tutup posisi, hitung PnL, keluarkan dari pantauan',\n  '• <code>/portfolio</code> — Ringkasan koin aktif, total modal, & PnL portofolio',\n  '• <code>/history [simbol]</code> — Riwayat analisis tersimpan di database lokal',\n  '• <code>/start</code> — Panduan interaktif & tutorial lengkap',\n  '',\n  '🔔 <i>Auto-Alert: Bot otomatis cek berkala dan kirim alert jika menyentuh TP/SL!</i>',\n  '⚠️ <i>Decision support only. Bukan saran finansial.</i>',\n].join('\\n');\nconst cfg = $('Config').first().json;\nreturn [{ json: { telegramMessage: msg, chatId: cfg.telegramChatId, botToken: cfg.botToken } }];"
+        "jsCode": "const msg = [\n  '📖 <b>Daftar Perintah Luna Hernandez Bot</b>',\n  '',\n  '🎯 <b>Riset & Rekomendasi:</b>',\n  '• <code>/rec</code> — Rekomendasi 3 koin pullback sehat untuk swing entry',\n  '• <code>/risk &lt;simbol&gt; [modal]</code> — Kalkulator risiko, downside, & sizing modal',\n  '• <code>/news &lt;simbol&gt;</code> — Headline berita live terhangat & analisis sentimen AI',\n  '• <code>/coin &lt;simbol&gt;</code> — Deep analysis: RSI, MACD, Tren, Berita Live, & AI',\n  '• <code>/stock &lt;ticker&gt;</code> — Saham AS: multi-timeframe, SEC fundamental, DCF skenario, & berita',\n  '• <code>/futures &lt;pair&gt;</code> — Binance perpetual: mark/index, funding, open interest, & multi-timeframe',\n  '• <code>/ask &lt;pertanyaan&gt;</code> — Riset bebas Google News Live + Memori obrolan',\n  '• <code>/market</code> — Top 5 gainers & losers 24 jam (IDR)',\n  '',\n  '💼 <b>Portofolio & Posisi Aktif:</b>',\n  '• <code>/buy &lt;simbol&gt; [modal]</code> — Catat beli & pantau ketat (e.g. <code>/buy sol 150k</code>)',\n  '• <code>/stat &lt;simbol&gt;</code> — Evaluasi posisi: PnL, rekomendasi Hold/TP/SL/DCA',\n  '• <code>/sell &lt;simbol&gt;</code> — Tutup posisi, hitung PnL, keluarkan dari pantauan',\n  '• <code>/portfolio</code> — Ringkasan koin aktif, total modal, & PnL portofolio',\n  '• <code>/history [simbol]</code> — Riwayat analisis tersimpan di database lokal',\n  '• <code>/start</code> — Panduan interaktif & tutorial lengkap',\n  '',\n  '🔔 <i>Auto-Alert: Bot otomatis cek berkala dan kirim alert jika menyentuh TP/SL!</i>',\n  '⚠️ <i>Decision support only. Bukan saran finansial.</i>',\n].join('\\n');\nconst cfg = $('Config').first().json;\nreturn [{ json: { telegramMessage: msg, chatId: cfg.telegramChatId, botToken: cfg.botToken } }];"
       },
       "id": "B1001",
       "name": "Build Help",
@@ -821,6 +855,260 @@
         3500,
         -720
       ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const update = $('Parse Incoming Message').first().json;\nconst mode = String(update.command || '').toLowerCase();\nconst raw = String(update.args || '').trim().split(/\\s+/)[0] || '';\nif (!/^(stock|futures)$/.test(mode)) throw new Error('Unsupported market-analysis command');\nlet symbol = raw.toUpperCase();\nif (mode === 'futures') symbol = symbol.replace(/[\\s/_-]/g, '');\nconst valid = mode === 'stock'\n  ? /^[A-Z][A-Z0-9.-]{0,9}$/.test(symbol)\n  : /^[A-Z0-9]{2,20}$/.test(symbol);\nif (!valid) symbol = '';\nconst dbCmd = 'node /home/node/.n8n/market_analysis_cli.mjs ' + mode + ' ' + symbol;\nreturn [{ json: {\n  ...update,\n  marketMode: mode,\n  marketSymbol: symbol,\n  dbCmd,\n} }];"
+      },
+      "id": "M1001",
+      "name": "Prepare Market Command",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        380,
+        -1080
+      ]
+    },
+    {
+      "parameters": {
+        "executeOnce": false,
+        "command": "={{ $json.dbCmd }}"
+      },
+      "id": "M1002",
+      "name": "Execute Market Analysis",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        620,
+        -1080
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx = $('Prepare Market Command').first().json;\nconst stdout = String($input.first().json.stdout || '').trim();\nlet parsed;\ntry {\n  const line = stdout.split('\\n').filter(Boolean).at(-1) || '';\n  parsed = JSON.parse(line);\n} catch {\n  parsed = { ok: false, error: { code: 'INVALID_PROVIDER_RESPONSE', message: 'CLI tidak mengembalikan JSON yang valid.', retryable: false } };\n}\nreturn [{ json: {\n  ...ctx,\n  analysisOk: parsed?.ok === true && parsed?.analysis != null,\n  analysis: parsed?.analysis || null,\n  marketError: parsed?.error || null,\n} }];"
+      },
+      "id": "M1003",
+      "name": "Parse Market Analysis Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        860,
+        -1080
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.analysisOk }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "M1004",
+      "name": "Market Analysis OK?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1100,
+        -1080
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx = $('Parse Market Analysis Result').first().json;\nconst analysis = ctx.analysis;\nconst cfg = $('Config').first().json;\nconst isStock = analysis.assetClass === 'stock';\nconst newsText = (analysis.news || []).length\n  ? analysis.news.map((item, index) => (index + 1) + '. ' + item.title + ' (' + item.publishedAt + ')').join('\\n')\n  : 'Tidak ada headline segar yang lolos filter 48 jam.';\nconst numericContext = isStock ? [\n  'Technical score: ' + analysis.technical.score + '/100',\n  'Fundamental score: ' + (analysis.fundamental.score == null ? 'N/A' : analysis.fundamental.score + '/100'),\n  'Final score: ' + analysis.finalScore + '/100',\n  'Verdict deterministik: ' + analysis.verdict,\n  'Risk score: ' + analysis.riskScore + '/10',\n  'MTF alignment: ' + analysis.technical.multiTimeframe.alignment,\n  'Revenue growth: ' + (analysis.fundamental.revenueGrowthPct ?? 'N/A') + '%',\n  'Net margin: ' + (analysis.fundamental.netMarginPct ?? 'N/A') + '%',\n  'FCF margin: ' + (analysis.fundamental.freeCashFlowMarginPct ?? 'N/A') + '%',\n  'Relative strength 20d vs SPY: ' + (analysis.technical.relativeStrength20d == null ? 'N/A' : (analysis.technical.relativeStrength20d * 100).toFixed(2) + '%'),\n].join('\\n') : [\n  'Technical score: ' + analysis.technical.score + '/100',\n  'Verdict deterministik: ' + analysis.verdict,\n  'Direction enum: ' + analysis.direction,\n  'Risk score: ' + analysis.riskScore + '/10',\n  'MTF alignment: ' + analysis.technical.multiTimeframe.alignment,\n  'Mark price: ' + analysis.derivatives.markPrice,\n  'Index price: ' + analysis.derivatives.indexPrice,\n  'Basis: ' + analysis.derivatives.basisPct + '%',\n  'Funding: ' + analysis.derivatives.funding.latestRatePct + '% (percentile ' + analysis.derivatives.funding.percentile + ')',\n  'OI regime: ' + analysis.derivatives.openInterest.regime + ' | OI change: ' + (analysis.derivatives.openInterest.changePct ?? 'N/A') + '%',\n  'Crowding: ' + analysis.derivatives.crowding,\n].join('\\n');\nconst prompt = [\n  'Kamu Luna Hernandez, analis pasar untuk trader Indonesia.',\n  'Jenis aset: ' + analysis.assetClass + ' | Simbol: ' + analysis.symbol + ' | Provider: ' + analysis.provider,\n  'Timestamp data: ' + analysis.asOf + ' | Delayed: ' + analysis.delayed,\n  '',\n  'DATA DETERMINISTIK (sumber kebenaran):',\n  numericContext,\n  '',\n  'HEADLINE SEGAR:',\n  newsText,\n  '',\n  'Tulis maksimal 650 karakter: hubungan berita dengan setup, risiko utama, dan satu skenario konservatif serta agresif.',\n  'DILARANG mengubah angka, direction, score, level, atau verdict deterministik. Jangan menciptakan data yang tidak tersedia.',\n  'Bahasa Indonesia santai-profesional. Tidak boleh memberi instruksi order otomatis.',\n].join('\\n');\nconst geminiBody = {\n  contents: [{ parts: [{ text: prompt }] }],\n  generationConfig: { maxOutputTokens: 1200, temperature: 0.2, thinkingConfig: { thinkingBudget: 384 } },\n};\nreturn [{ json: { ...ctx, geminiBody } }];"
+      },
+      "id": "M1005",
+      "name": "Prepare Gemini Market Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1340,
+        -1160
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ 'https://generativelanguage.googleapis.com/v1beta/models/' + $('Config').first().json.geminiModel + ':generateContent?key=' + ($env.GEMINI_API_KEY || $('Config').first().json.geminiApiKey) }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.geminiBody) }}",
+        "options": {
+          "timeout": 60000,
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "M1006",
+      "name": "Gemini Market Research",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1580,
+        -1160
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 3000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const response = $input.first().json;\nconst ctx = $('Prepare Gemini Market Prompt').first().json;\nconst analysis = ctx.analysis;\nconst cfg = $('Config').first().json;\nconst parts = response.candidates?.[0]?.content?.parts || [];\nlet aiAnalysis = response.error\n  ? '⚠️ Narasi Gemini tidak tersedia; angka deterministik tetap valid.'\n  : parts.map(part => part.text || '').join('').trim();\nif (!aiAnalysis) aiAnalysis = '⚠️ Narasi Gemini tidak tersedia; angka deterministik tetap valid.';\naiAnalysis = aiAnalysis\n  .replace(/\\*\\*([^*]+)\\*\\*/g, '<b>$1</b>')\n  .replace(/\\*([^*]+)\\*/g, '$1')\n  .replace(/\\*/g, '')\n  .slice(0, 1200);\nconst analysisVerdict = analysis.verdict;\nconst verdictIcon = analysisVerdict === 'BUY' ? '🟢' : analysisVerdict === 'SELL' ? '🔴' : '🟡';\nconst formatNumber = (value, digits = 2) => value == null || !Number.isFinite(Number(value)) ? 'N/A' : Number(value).toLocaleString('en-US', { maximumFractionDigits: digits });\nlet lines;\nif (analysis.assetClass === 'stock') {\n  const daily = analysis.technical.timeframes['1d'];\n  const fundamental = analysis.fundamental || {};\n  const dcf = fundamental.dcfScenarios;\n  lines = [\n    verdictIcon + ' <b>' + analysis.companyName + ' (' + analysis.symbol + ') — ' + analysisVerdict + '</b>',\n    '💵 Harga: $' + formatNumber(analysis.price, 4) + ' | Data IEX: DELAYED | as-of ' + analysis.asOf,\n    '📊 Skor: Teknikal ' + analysis.technical.score + '/100 | Fundamental ' + (fundamental.score ?? 'N/A') + '/100 | Final ' + analysis.finalScore + '/100',\n    '🧭 MTF: ' + analysis.technical.multiTimeframe.alignment + ' | 1H ' + analysis.technical.timeframes['1h'].score + ' · 4H ' + analysis.technical.timeframes['4h'].score + ' · 1D ' + daily.score + ' · 1W ' + analysis.technical.timeframes['1w'].score,\n    '📈 RSI ' + daily.indicators.rsi14 + ' | ADX ' + daily.indicators.adx14 + ' | ATR ' + daily.indicators.atrPct + '% | Vol ' + formatNumber(daily.indicators.historicalVolatilityAnnualized == null ? null : daily.indicators.historicalVolatilityAnnualized * 100, 1) + '%',\n    '🎯 Support $' + formatNumber(daily.levels.support, 4) + ' | Resistance $' + formatNumber(daily.levels.resistance, 4) + ' | R:R 1:' + daily.levels.riskRewardRatio,\n    '🏢 Revenue growth ' + formatNumber(fundamental.revenueGrowthPct) + '% | Net margin ' + formatNumber(fundamental.netMarginPct) + '% | FCF margin ' + formatNumber(fundamental.freeCashFlowMarginPct) + '%',\n    '🧾 Current ratio ' + formatNumber(fundamental.currentRatio) + ' | Liabilities/Equity ' + formatNumber(fundamental.liabilitiesToEquity) + ' | P/E ' + formatNumber(fundamental.priceToEarnings),\n    dcf ? '🧮 DCF indikatif: Bear $' + formatNumber(dcf.bear.fairValuePerShare, 2) + ' · Base $' + formatNumber(dcf.base.fairValuePerShare, 2) + ' · Bull $' + formatNumber(dcf.bull.fairValuePerShare, 2) : '🧮 DCF: N/A karena komponen SEC belum lengkap',\n    '⚠️ Risk score: ' + analysis.riskScore + '/10 | Market open: ' + (analysis.marketSession.isOpen ? 'YA' : 'TIDAK'),\n  ];\n} else {\n  const derivative = analysis.derivatives;\n  const h4 = analysis.technical.timeframes['4h'];\n  lines = [\n    verdictIcon + ' <b>' + analysis.symbol + ' PERPETUAL — ' + analysisVerdict + '</b>',\n    '💵 Mark ' + formatNumber(derivative.markPrice, 6) + ' | Index ' + formatNumber(derivative.indexPrice, 6) + ' USDT | as-of ' + analysis.asOf,\n    '📊 Teknikal ' + analysis.technical.score + '/100 | Direction ' + analysis.direction + ' | Risk ' + analysis.riskScore + '/10',\n    '🧭 MTF: ' + analysis.technical.multiTimeframe.alignment + ' | 15m ' + analysis.technical.timeframes['15m'].score + ' · 1H ' + analysis.technical.timeframes['1h'].score + ' · 4H ' + h4.score + ' · 1D ' + analysis.technical.timeframes['1d'].score,\n    '📈 RSI 4H ' + h4.indicators.rsi14 + ' | ADX ' + h4.indicators.adx14 + ' | ATR ' + h4.indicators.atrPct + '%',\n    '🧲 Basis ' + derivative.basisPct + '% | Funding ' + derivative.funding.latestRatePct + '% | Percentile ' + derivative.funding.percentile,\n    '🏗 OI ' + derivative.openInterest.regime + ' | ΔOI ' + formatNumber(derivative.openInterest.changePct, 2) + '% | Crowding ' + derivative.crowding,\n    '🎯 Support ' + formatNumber(h4.levels.support, 6) + ' | Resistance ' + formatNumber(h4.levels.resistance, 6) + ' | R:R 1:' + h4.levels.riskRewardRatio,\n    '⛔ Analysis-only: tidak ada order atau estimasi liquidation palsu.',\n  ];\n}\nconst message = [\n  ...lines,\n  '',\n  '🤖 <b>Sintesis berita (tidak mengubah angka):</b>',\n  aiAnalysis,\n  '',\n  '⚠️ <i>Decision support only.</i>',\n].join('\\n');\nconst record = {\n  assetClass: analysis.assetClass,\n  provider: analysis.provider,\n  symbol: analysis.symbol,\n  exchange: analysis.exchange,\n  currency: analysis.currency,\n  timeframe: 'multi',\n  asOf: analysis.asOf,\n  delayed: analysis.delayed,\n  technicalScore: analysis.technical.score,\n  fundamentalScore: analysis.fundamental?.score ?? null,\n  sentimentScore: analysis.sentiment?.score ?? 0,\n  riskScore: analysis.riskScore,\n  verdict: analysisVerdict,\n  summary: aiAnalysis.slice(0, 500),\n  payload: analysis,\n};\nreturn [{ json: {\n  telegramMessage: message,\n  chatId: cfg.telegramChatId,\n  botToken: cfg.botToken,\n  analysisRecord: record,\n} }];"
+      },
+      "id": "M1007",
+      "name": "Build Market Report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1820,
+        -1160
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $json.botToken || $('Config').first().json.botToken }}/sendMessage",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ chat_id: $json.chatId || $('Config').first().json.telegramChatId, text: $json.telegramMessage, parse_mode: \"HTML\", disable_web_page_preview: true }) }}",
+        "options": {
+          "timeout": 15000,
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "M1008",
+      "name": "Send Market Report",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        2060,
+        -1240
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\nconst encoded = Buffer.from(JSON.stringify(input.analysisRecord)).toString('base64url');\nconst dbCmd = 'node /home/node/.n8n/market_analysis_cli.mjs save ' + encoded;\nreturn [{ json: { ...input, dbCmd } }];"
+      },
+      "id": "M1009",
+      "name": "Prepare Save Market",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2060,
+        -1080
+      ]
+    },
+    {
+      "parameters": {
+        "executeOnce": false,
+        "command": "={{ $json.dbCmd }}"
+      },
+      "id": "M1010",
+      "name": "Save Market Analysis",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        2300,
+        -1080
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx = $('Parse Market Analysis Result').first().json;\nconst cfg = $('Config').first().json;\nconst error = ctx.marketError || {};\nconst messages = {\n  INVALID_SYMBOL: 'Simbol tidak valid. Contoh: <code>/stock AAPL</code> atau <code>/futures BTCUSDT</code>.',\n  CONFIG_MISSING: 'Konfigurasi Alpaca belum lengkap. Isi ALPACA_API_KEY_ID dan ALPACA_API_SECRET di file .env.',\n  INSUFFICIENT_DATA: 'Candle tertutup belum cukup untuk menghitung indikator secara konsisten.',\n  RATE_LIMITED: 'Provider sedang membatasi permintaan. Tunggu sebentar lalu coba lagi.',\n  ALPACA_UNAVAILABLE: 'Data saham Alpaca sedang tidak tersedia.',\n  BINANCE_UNAVAILABLE: 'Data Binance Futures sedang tidak tersedia.',\n  PROVIDER_HTTP_ERROR: 'Provider menolak permintaan data. Periksa simbol atau coba lagi nanti.',\n  PROVIDER_UNAVAILABLE: 'Respons provider tidak dapat diproses. Coba lagi setelah beberapa saat.',\n};\nconst detail = messages[error.code] || 'Analisis gagal karena data provider tidak lengkap atau tidak valid.';\nconst retry = error.retryable ? '\\n<i>Gangguan ini kemungkinan sementara.</i>' : '';\nreturn [{ json: {\n  telegramMessage: '❌ <b>Market analysis gagal</b> [' + (error.code || 'UNKNOWN') + ']\\n' + detail + retry,\n  chatId: cfg.telegramChatId,\n  botToken: cfg.botToken,\n} }];"
+      },
+      "id": "M1011",
+      "name": "Build Market Error",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1340,
+        -1000
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $json.botToken || $('Config').first().json.botToken }}/sendMessage",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ chat_id: $json.chatId || $('Config').first().json.telegramChatId, text: $json.telegramMessage, parse_mode: \"HTML\", disable_web_page_preview: true }) }}",
+        "options": {
+          "timeout": 15000,
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "M1012",
+      "name": "Send Market Error",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1580,
+        -1000
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000,
       "onError": "continueRegularOutput"
     },
     {
@@ -1315,7 +1603,7 @@
     {
       "parameters": {
         "executeOnce": false,
-        "command": "={{ (() => { const p=$('Config').first().json.sqlitePath; const sym=($('Parse Incoming Message').first().json.args||'').toUpperCase().replace(/'/g,\"''\"); const where=sym?\"WHERE simbol='\"+sym+\"' AND tipe='coin'\":'WHERE tipe=\\'coin\\''; return \"sqlite3 -separator '|' '\" + p.replace(/'/g,\"'\\\\\"'\\\\\"'\") + \"' \\\\\"SELECT tanggal, waktu, simbol, tipe, keputusan, skor_teknikal, ringkasan FROM coin_sessions \"+where+\" ORDER BY tanggal DESC, id DESC LIMIT 10;\\\\\"\"; })() }}"
+        "command": "={{ 'node /home/node/.n8n/market_analysis_cli.mjs history ' + (($('Parse Incoming Message').first().json.args || '').toUpperCase().replace(/[^A-Z0-9.-]/g, '')) }}"
       },
       "id": "B6001",
       "name": "Read History",
@@ -1329,7 +1617,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const update = $('Parse Incoming Message').first().json;\nconst cfg = $('Config').first().json;\nconst raw = ($input.first().json.stdout || '').trim();\nconst sym = update.args.toUpperCase().trim() || 'semua';\nconst lines = raw.split('\\n').filter(Boolean);\nif (!lines.length) {\n  const msg = '📋 Belum ada riwayat analisis' + (update.args ? ' untuk ' + sym : '') + '.\\n\\nGunakan /coin [simbol] untuk memulai analisis.';\n  return [{ json: { telegramMessage: msg, chatId: cfg.telegramChatId, botToken: cfg.botToken } }];\n}\nconst sessions = lines.map(line => {\n  const [tanggal, waktu, simbol, tipe, keputusan, skor, ringkasan] = line.split('|');\n  return { tanggal, waktu, simbol, tipe, keputusan, skor: parseFloat(skor) || 0, ringkasan: ringkasan || '' };\n});\nconst header = '📋 <b>Riwayat Analisis' + (update.args ? ' ' + sym : '') + '</b>\\n\\n';\nconst rows = sessions.slice(0, 10).map(s =>\n  s.tanggal + (s.waktu ? ' ' + s.waktu : '') + ' <b>' + s.simbol + '</b> [' + s.tipe + '] ' +\n  (s.keputusan ? '→ ' + (s.keputusan === 'BUY' ? '🟢 ' : s.keputusan === 'SELL' ? '🔴 ' : '🟡 ') + s.keputusan : '') +\n  (s.ringkasan ? '\\n  <i>' + s.ringkasan.slice(0, 80) + '</i>' : '')\n).join('\\n\\n');\nreturn [{ json: { telegramMessage: header + rows, chatId: cfg.telegramChatId, botToken: cfg.botToken } }];"
+        "jsCode": "const update = $('Parse Incoming Message').first().json;\nconst cfg = $('Config').first().json;\nconst raw = ($input.first().json.stdout || '').trim();\nconst sym = update.args.toUpperCase().trim() || 'semua';\nlet parsed;\ntry {\n  parsed = JSON.parse(raw.split('\\n').filter(Boolean).at(-1) || '{}');\n} catch {\n  parsed = { ok: false, sessions: [] };\n}\nconst sessions = Array.isArray(parsed.sessions) ? parsed.sessions : [];\nif (!sessions.length) {\n  const msg = '📋 Belum ada riwayat analisis' + (update.args ? ' untuk ' + sym : '') + '.\\n\\nGunakan /coin, /stock, atau /futures untuk memulai analisis.';\n  return [{ json: { telegramMessage: msg, chatId: cfg.telegramChatId, botToken: cfg.botToken } }];\n}\nconst header = '📋 <b>Riwayat Analisis' + (update.args ? ' ' + sym : '') + '</b>\\n\\n';\nconst rows = sessions.slice(0, 10).map(s =>\n  new Date(s.analyzedAt).toLocaleString('id-ID', { timeZone: cfg.timezone, dateStyle: 'short', timeStyle: 'short' }) +\n  ' <b>' + s.symbol + '</b> [' + s.assetClass + '] ' +\n  (s.verdict ? '→ ' + (s.verdict === 'BUY' ? '🟢 ' : s.verdict === 'SELL' ? '🔴 ' : '🟡 ') + s.verdict : '') +\n  (s.technicalScore != null ? ' · T' + Number(s.technicalScore).toFixed(0) : '') +\n  (s.summary ? '\\n  <i>' + String(s.summary).slice(0, 80) + '</i>' : '')\n).join('\\n\\n');\nreturn [{ json: { telegramMessage: header + rows, chatId: cfg.telegramChatId, botToken: cfg.botToken } }];"
       },
       "id": "B6002",
       "name": "Build History",
@@ -2867,6 +3155,20 @@
         ],
         [
           {
+            "node": "Prepare Market Command",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Market Command",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
             "node": "Fetch Ask News",
             "type": "main",
             "index": 0
@@ -3151,6 +3453,117 @@
         [
           {
             "node": "Save Coin Analysis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Market Command": {
+      "main": [
+        [
+          {
+            "node": "Execute Market Analysis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute Market Analysis": {
+      "main": [
+        [
+          {
+            "node": "Parse Market Analysis Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Market Analysis Result": {
+      "main": [
+        [
+          {
+            "node": "Market Analysis OK?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Market Analysis OK?": {
+      "main": [
+        [
+          {
+            "node": "Prepare Gemini Market Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build Market Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Gemini Market Prompt": {
+      "main": [
+        [
+          {
+            "node": "Gemini Market Research",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini Market Research": {
+      "main": [
+        [
+          {
+            "node": "Build Market Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Market Report": {
+      "main": [
+        [
+          {
+            "node": "Send Market Report",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Prepare Save Market",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Save Market": {
+      "main": [
+        [
+          {
+            "node": "Save Market Analysis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Market Error": {
+      "main": [
+        [
+          {
+            "node": "Send Market Error",
             "type": "main",
             "index": 0
           }
@@ -3909,7 +4322,7 @@
     "saveDataErrorExecution": "last",
     "saveDataSuccessExecution": "all"
   },
-  "versionId": "B9000000-0000-4000-8000-000000000006",
+  "versionId": "B9000000-0000-4000-8000-000000000007",
   "meta": {
     "templateCredsSetupCompleted": true
   },

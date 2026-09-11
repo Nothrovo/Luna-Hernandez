@@ -1,6 +1,6 @@
 # Dokumentasi Matematis & Analisis Algoritma: Luna Hernandez (Midas Bot)
 
-> **Versi:** 2.1  
+> **Versi:** 3.0
 > **Status:** Production  
 > **Filosofi Inti:** *Deterministic Quantitative Calculation + Synthetic AI Qualitative Reasoning* (Mengadopsi prinsip *Loop Design & Trade Planner*).
 
@@ -8,7 +8,7 @@
 
 ## 1. Pendahuluan & Filosofi Desain
 
-Bot **Luna Hernandez** dirancang untuk memberikan dukungan pengambilan keputusan (*decision support*) yang objektif, terukur, dan disiplin dalam pasar cryptocurrency. Pasar kripto terkenal memiliki volatilitas ekstrem, sentimen berita yang bising (*noise*), serta bias psikologis trader (seperti FOMO dan *panic selling*).
+Bot **Luna Hernandez** dirancang untuk memberikan dukungan pengambilan keputusan (*decision support*) yang objektif dan terukur pada crypto spot, saham AS, serta crypto perpetual futures. Jalur saham/futures memakai kontrak candle kanonikal dan kalkulator yang terpisah dari narasi LLM.
 
 Untuk mengatasi kelemahan tersebut, arsitektur bot dibangun atas dua pilar yang terpisah secara tegas:
 
@@ -27,6 +27,8 @@ flowchart TD
     B --> C{Pilih Rute}
     
     C -->|/coin| D[Fetch Data OHLCV CoinGecko & BTC 90 Hari]
+    C -->|/stock| R[Alpaca IEX + SEC Company Facts]
+    C -->|/futures| S[Binance USD-M Public Market Data]
     C -->|/risk| E[Fetch Data OHLCV & BTC Gate]
     C -->|/buy| F[Fetch Harga & Kalkulasi Dynamic TP/SL]
     C -->|/stat /portfolio| G[Query SQLite Positions & Fetch Harga Live]
@@ -38,6 +40,14 @@ flowchart TD
     D --> L[Fetch 10 Berita Google News Real-Time]
     D --> M[Sintesis AI Gemini: Skenario Konservatif & Agresif]
     D --> N[Kirim Laporan Lengkap ke Telegram]
+
+    R --> T[Normalisasi Candle Tertutup 1H/4H/1D/1W]
+    T --> U[MTF + Relative Strength SPY + Fundamental + DCF]
+    S --> V[Normalisasi Candle Tertutup 15m/1H/4H/1D]
+    V --> W[MTF + Basis + Funding + Open Interest]
+    U --> X[Verdict Deterministik]
+    W --> X
+    X --> Y[Gemini Menulis Narasi Tanpa Mengubah Angka]
     
     E --> O[Hitung Skor Risiko 1-10 & Potensi Downside]
     E --> P[Kalkulasi Sizing Modal & Nominal IDR Risk]
@@ -374,8 +384,102 @@ Mendukung perintah partial sell `/sell <simbol> [porsi]` (contoh: `/sell tia 50%
 
 ---
 
-## 9. Kesimpulan & Komitmen Integritas Sistem
+## 9. Kontrak Data Multi-Market
 
-1. **Konsistensi Total:** Angka yang keluar pada menu `/coin`, `/risk`, `/buy`, dan `/rec` berasal dari formula dan basis data kuantitatif yang sama.
+Setiap provider dinormalisasi menjadi struktur candle yang sama:
+
+```text
+{ ts, closedAt, open, high, low, close, volume }
+```
+
+Candle dibuang bila timestamp/angka OHLC tidak valid, harga tidak positif, `high` lebih kecil dari `open/close`, `low` lebih besar dari `open/close`, volume negatif, atau candle belum selesai. `ts` adalah waktu buka dan `closedAt` waktu tutup yang dipakai untuk `asOf`. Duplikat timestamp disatukan secara deterministik dan hasil diurutkan naik berdasarkan waktu. Agregasi mingguan mengecualikan pekan kalender yang masih berjalan.
+
+Untuk saham, candle 4H provider dipakai sebagai sumber utama. Jika provider tidak memberi sedikitnya 35 candle 4H, fallback membentuknya dari empat candle 1H berurutan. Jeda overnight dan akhir pekan memutus grup sehingga tidak ada satu candle sintetis yang mencampur dua sesi perdagangan; grup sisa yang belum lengkap tidak dipakai.
+
+## 10. Analisis Saham AS (`/stock`)
+
+### 10.1. Multi-Timeframe dan Relative Strength
+
+Timeframe saham dan bobot agregasinya:
+
+| Timeframe | Sumber | Bobot MTF | Annualization |
+|---|---|---:|---:|
+| 1H | Alpaca IEX 1Hour | 15% | $252 \times 6.5$ |
+| 4H | Alpaca IEX 4Hour; agregasi lokal sebagai fallback | 20% | $252 \times 2$ |
+| 1D | Alpaca IEX 1Day | 45% | $252$ |
+| 1W | Agregasi candle harian per pekan UTC | 20% | $52$ |
+
+Relative strength 20 hari dihitung terhadap SPY:
+
+$$RS_{20} = \left(\frac{C_t}{C_{t-20}} - 1\right)_{stock} - \left(\frac{C_t}{C_{t-20}} - 1\right)_{SPY}$$
+
+Skor setiap timeframe memakai:
+
+$$S_{frame}=\operatorname{clamp}\left(50+50(0.30T+0.20M+0.20P+0.15V+0.15RS),0,100\right)$$
+
+dengan $T$ = tren SMA, $M=0.4M_{RSI}+0.6M_{MACD}$, $P$ = setup Bollinger/pullback, $V$ = volume yang diberi tanda arah return, dan $RS$ = relative strength (hanya relevan pada frame 1D saham). Semua komponen dinormalisasi ke $[-1,1]$.
+
+### 10.2. Fundamental SEC dan DCF
+
+Data fundamental berasal dari fakta XBRL `10-K`/`10-Q`. Skor hanya memakai kategori yang datanya tersedia, lalu dinormalisasi terhadap total bobot yang tersedia; coverage disimpan sebagai `scoreCoveragePct`. Komponen maksimal adalah revenue growth 20, net margin 20, FCF margin 20, current ratio 15, liabilities/equity 10, dan P/E 15.
+
+$$FCF = CFO - |CapEx|$$
+$$FinalScore_{stock} = 0.70 \times MTFScore + 0.30 \times FundamentalScore$$
+
+Jika fundamental tidak tersedia, `FinalScore` sama dengan `MTFScore` dan nilai fundamental tidak dipalsukan. Verdict awal adalah `BUY` untuk skor $\ge65$, `SELL` untuk skor $\le35$, selain itu `HOLD`. Konflik dua atau lebih timeframe yang berlawanan menurunkan `BUY`/`SELL` menjadi `HOLD`.
+
+DCF memproyeksikan FCF lima tahun lalu menghitung terminal value:
+
+$$TV=\frac{FCF_5(1+g_t)}{r-g_t}$$
+$$EquityValue=\sum_{y=1}^{5}\frac{FCF_y}{(1+r)^y}+\frac{TV}{(1+r)^5}+Cash-Debt$$
+$$FairValuePerShare=\max\left(0,\frac{EquityValue}{Shares}\right)$$
+
+Skenario bear/base/bull memakai asumsi growth, discount rate, dan terminal growth yang berbeda dan diberi label **indikatif**, bukan valuasi presisi.
+
+## 11. Analisis Crypto Perpetual Futures (`/futures`)
+
+Bobot MTF adalah 15m 15%, 1H 25%, 4H 35%, dan 1D 25%. Semua candle berasal dari USD-M futures dan harus sudah tertutup. Harga laporan adalah `markPrice`; `indexPrice` tidak boleh diganti oleh harga spot.
+
+$$Basis\% = \left(\frac{MarkPrice}{IndexPrice}-1\right)\times100$$
+
+Funding dihitung dari maksimal 100 observasi publik:
+
+$$z_{funding}=\frac{f_{latest}-\bar f}{\sigma_f}$$
+
+`LONG_CROWDED` berlaku ketika funding $\ge0.05\%$ dan percentile $\ge0.9$ atau z-score $\ge1.5$. `SHORT_CROWDED` memakai kondisi simetris pada funding $\le-0.05\%$. Kondisi lain diberi label `BALANCED`.
+
+Perubahan open interest dan harga:
+
+$$\Delta OI\%=\left(\frac{OI_t}{OI_0}-1\right)\times100$$
+$$\Delta P\%=\left(\frac{P_t}{P_0}-1\right)\times100$$
+
+Kombinasi tandanya menghasilkan `PRICE_UP_OI_UP`, `PRICE_DOWN_OI_UP`, `PRICE_UP_OI_DOWN`, atau `PRICE_DOWN_OI_DOWN`. Data kurang dari dua observasi menghasilkan `UNKNOWN`, bukan asumsi nol.
+
+Arah adalah `LONG` bila MTF score $\ge60$, `SHORT` bila $\le40$, dan `NEUTRAL` di antaranya. Mapping verdict: `LONG→BUY`, `SHORT→SELL`, `NEUTRAL→HOLD`. Posisi yang searah crowding ekstrem diturunkan menjadi `HOLD`. Nilai `executionAllowed` selalu `false`.
+
+### 11.1. Formula PnL Linear Referensi
+
+Kalkulator library memakai enum ketat `LONG`/`SHORT`:
+
+$$GrossPnL_{long}=(P_{mark}-P_{entry})Q$$
+$$GrossPnL_{short}=(P_{entry}-P_{mark})Q$$
+$$Fees=P_{entry}Qf_{entry}+P_{mark}Qf_{exit}$$
+$$Margin=\frac{P_{entry}Q}{Leverage}$$
+$$NetPnL=GrossPnL-Fees-FundingPaid$$
+$$ROE\%=\frac{NetPnL}{Margin}\times100$$
+
+`FundingPaid` positif berarti biaya dan negatif berarti pendapatan. Leverage hanya memengaruhi margin/ROE, bukan gross PnL. Formula ini tersedia untuk pengujian/manual calculation dan belum dihubungkan ke eksekusi order.
+
+## 12. Persistensi, Cache, dan Batas Peran AI
+
+Analisis saham/futures disimpan di `market_analysis_sessions` dengan `asset_class`, provider, timestamp analisis, `as_of`, flag delayed, seluruh score, verdict, summary, dan payload JSON. `/history` menggabungkan tabel ini dengan tabel legacy `coin_sessions`, mengurutkan semuanya berdasarkan waktu terbaru.
+
+Cache SQLite memakai TTL berdasarkan jenis data: Binance 1 menit, Alpaca intraday 5 menit, Alpaca daily 30 menit, market clock 30 detik, berita 10 menit, dan SEC Company Facts 24 jam. Retry hanya berlaku untuk gangguan jaringan, HTTP 429, HTTP 5xx, atau parsing respons yang bersifat sementara; error validasi tidak diulang.
+
+Gemini dipanggil satu kali setelah kalkulasi berhasil. Prompt menegaskan bahwa angka, direction, score, level, dan verdict adalah sumber kebenaran deterministik. Bila Gemini gagal, angka tetap dapat dipakai dan narasi diganti pesan fallback. Gemini tidak pernah menyimpan verdict hasil interpretasinya sendiri.
+
+## 13. Kesimpulan & Komitmen Integritas Sistem
+
+1. **Konsistensi Total:** Angka yang keluar pada menu `/coin`, `/stock`, `/futures`, `/risk`, `/buy`, dan `/rec` berasal dari kalkulator deterministik, bukan dari prosa AI.
 2. **Keadilan Rasio:** Tidak ada rekomendasi entry yang memiliki rasio $R:R < 1 : 2.0$.
 3. **Objektivitas:** Risiko disajikan secara transparan dengan kalkulasi nominal rupiah, sehingga keputusan akhir tetap berada di bawah kendali trader sepenuhnya.

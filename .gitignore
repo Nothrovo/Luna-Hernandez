@@ -5,6 +5,9 @@
 docker/n8n-data/*
 !docker/n8n-data/manage_positions.mjs
 !docker/n8n-data/midas-bot.n8n.json
+!docker/n8n-data/market_analysis_cli.mjs
+!docker/n8n-data/market-analysis.mjs
+!docker/n8n-data/market-providers.mjs
 
 # SQLite database files
 *.sqlite

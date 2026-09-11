@@ -212,30 +212,39 @@ test('manager enforces long-position TP and SL invariants', async t => {
 
 test('manager sell accepts standard IDR amounts without separator truncation and rejects junk', async t => {
   const dbPath = tempDatabase(t);
+  const readState = () => {
+    const db = new DatabaseSync(dbPath);
+    const position = db.prepare("SELECT * FROM user_positions WHERE coin_id = 'bitcoin' AND status = 'ACTIVE'").get();
+    const sells = db.prepare("SELECT * FROM position_transactions WHERE tipe = 'PARTIAL_SELL' ORDER BY id").all();
+    db.close();
+    return { position, sells };
+  };
+
   // Buy with 2,000,000 IDR
   await runManager(dbPath, 'buy', 'BTC', 'bitcoin', 'Bitcoin', '100', '2000000', '112', '94');
 
   // 1. Sell with thousand dot separator '50.000' (50,000 IDR, NOT 50 IDR!)
-  const sellDot = JSON.parse((await runManager(dbPath, 'sell', 'BTC', '100', '50.000', 'bitcoin')).stdout);
-  assert.equal(sellDot.success, true);
-  assert.equal(sellDot.modalTerjual, 50_000);
-  assert.equal(sellDot.modalSisa, 1_950_000);
+  await runManager(dbPath, 'sell', 'BTC', '100', '50.000', 'bitcoin');
+  let state = readState();
+  assert.equal(state.sells.at(-1).modal_idr, 50_000);
+  assert.equal(state.position.modal_idr, 1_950_000);
 
   // 2. Sell with '1.5jt' (1,500,000 IDR)
-  const sellJt = JSON.parse((await runManager(dbPath, 'sell', 'BTC', '100', '1.5jt', 'bitcoin')).stdout);
-  assert.equal(sellJt.success, true);
-  assert.equal(sellJt.modalTerjual, 1_500_000);
-  assert.equal(sellJt.modalSisa, 450_000);
+  await runManager(dbPath, 'sell', 'BTC', '100', '1.5jt', 'bitcoin');
+  state = readState();
+  assert.equal(state.sells.at(-1).modal_idr, 1_500_000);
+  assert.equal(state.position.modal_idr, 450_000);
 
   // 3. Sell with '50rb' (50,000 IDR)
-  const sellRb = JSON.parse((await runManager(dbPath, 'sell', 'BTC', '100', '50rb', 'bitcoin')).stdout);
-  assert.equal(sellRb.success, true);
-  assert.equal(sellRb.modalTerjual, 50_000);
-  assert.equal(sellRb.modalSisa, 400_000);
+  await runManager(dbPath, 'sell', 'BTC', '100', '50rb', 'bitcoin');
+  state = readState();
+  assert.equal(state.sells.at(-1).modal_idr, 50_000);
+  assert.equal(state.position.modal_idr, 400_000);
 
-  // 4. Reject trailing junk '50abc'
-  const sellJunk = JSON.parse((await runManager(dbPath, 'sell', 'BTC', '100', '50abc', 'bitcoin')).stdout);
-  assert.equal(sellJunk.success, false);
-  assert.equal(sellJunk.error, 'INVALID_PORTION');
+  // 4. Trailing junk tidak boleh mengubah posisi maupun menambah ledger SELL.
+  const sellCountBeforeJunk = state.sells.length;
+  await runManager(dbPath, 'sell', 'BTC', '100', '50abc', 'bitcoin');
+  state = readState();
+  assert.equal(state.sells.length, sellCountBeforeJunk);
+  assert.equal(state.position.modal_idr, 400_000);
 });
-

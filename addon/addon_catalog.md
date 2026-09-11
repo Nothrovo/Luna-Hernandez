@@ -1,3 +1,25 @@
+# Addon workflow catalog
+
+## Status asimilasi Midas (2026-09-11)
+
+Catalog ini adalah bahan referensi, bukan daftar dependency. Implementasi mengambil pola yang berguna lalu mengganti layanan berbayar/berat dengan provider gratis atau kalkulasi lokal.
+
+| Pola dari catalog | Keputusan | Implementasi Midas |
+|---|---|---|
+| Automated Stock Analysis Reports: teknikal + news + LLM | Diterapkan | `/stock`, MTF deterministik, Google News 48 jam, satu sintesis Gemini |
+| Technical stock analysis via Telegram/Airtable | Konsep diterapkan | Telegram dipertahankan; Airtable tidak ditambah karena SQLite sudah cukup |
+| AI Crew fundamental stock analysis | Konsep disederhanakan | Tidak memakai multi-agent runtime; SEC XBRL dihitung deterministik lalu Gemini hanya menarasikan |
+| Earnings-report RAG | Ditunda | Membutuhkan ingestion dokumen/embedding dan belum perlu untuk command on-demand |
+| Stock sentiment dengan EODHD/layanan berita | Konsep diterapkan | Google News RSS dipakai sebagai sumber opsional tanpa menambah subscription |
+| FinnHub + Google Sheets DCF | Rumus diasimilasi | Rasio dan DCF bear/base/bull dihitung lokal dari SEC Company Facts; tanpa FinnHub/Sheets |
+| Binance market alert / futures analytics | Sebagian diterapkan | Candle USD-M, mark/index, funding, OI, dan crowding; tanpa API key/order execution |
+| Screenshot/vision chart analysis | Tidak diterapkan | OHLCV terstruktur lebih mudah diuji dan tidak memerlukan browser/extension |
+| Weekly report otomatis | Ditunda | Jalur on-demand dibuat dahulu; scheduler baru layak setelah kualitas hasil terukur |
+
+Provider runtime saat ini: CoinGecko untuk crypto spot, Alpaca Basic/IEX + SEC EDGAR untuk saham AS, Binance USD-M public market data untuk perpetual futures, dan Google News RSS untuk headline. Detail formula ada di `Calculations.md`.
+
+---
+
 Top 294 Crypto Trading automation workflows
 Crypto Trading
 AI
