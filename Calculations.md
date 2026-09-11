@@ -26,7 +26,7 @@ flowchart TD
     A[Input Pengguna / Webhook Telegram] --> B[Parse Command & Argumen]
     B --> C{Pilih Rute}
     
-    C -->|/coin| D[Fetch Data OHLCV CoinGecko & BTC 60 Hari]
+    C -->|/coin| D[Fetch Data OHLCV CoinGecko & BTC 90 Hari]
     C -->|/risk| E[Fetch Data OHLCV & BTC Gate]
     C -->|/buy| F[Fetch Harga & Kalkulasi Dynamic TP/SL]
     C -->|/stat /portfolio| G[Query SQLite Positions & Fetch Harga Live]
@@ -192,10 +192,9 @@ di mana $s_i \in [-1.0, +1.0]$.
 
 ### Kategori Rekomendasi Awal:
 $$\text{Keputusan} = \begin{cases} 
-\text{STRONG BUY} & \text{jika } \text{TechnicalScore} \ge +0.50 \\
-\text{BUY / ACCUMULATE} & \text{jika } +0.20 \le \text{TechnicalScore} < +0.50 \\
-\text{HOLD / NEUTRAL} & \text{jika } -0.20 < \text{TechnicalScore} < +0.20 \\
-\text{REDUCE / SELL} & \text{jika } \text{TechnicalScore} \le -0.20
+\text{BUY} & \text{jika } \text{TechnicalScore} > +0.20 \\
+\text{HOLD} & \text{jika } -0.20 \le \text{TechnicalScore} \le +0.20 \\
+\text{SELL} & \text{jika } \text{TechnicalScore} < -0.20
 \end{cases}$$
 
 ---
@@ -212,12 +211,10 @@ Bitcoin memegang dominasi pasar kripto yang signifikan ($> 55\%$). Ketika tren B
    \end{cases}$$
 
 2. **Dampak BTC Gate Terhadap Altcoin:**
-   - Jika **BTC BULLISH**: Altcoin dengan skor teknikal tinggi mendapatkan status rekomendasi penuh (`BUY` / `STRONG BUY`).
+   - Jika **BTC BULLISH** atau **NEUTRAL**: Altcoin dengan skor teknikal tinggi mendapatkan status rekomendasi penuh (`BUY`).
    - Jika **BTC BEARISH**:
-     - Rekomendasi `BUY` otomatis diturunkan menjadi **`HOLD (BTC BEARISH)`** atau **`WATCHLIST PULLBACK`**.
-     - Skor teknikal diberikan penalti kehati-hatian.
-     - Rasio target $R:R$ diperketat.
-     - Bot memberikan peringatan makro tertulis tanpa menggunakan kata kaku "dilarang".
+     - Rekomendasi `BUY` otomatis diturunkan menjadi **`HOLD (BTC BEARISH)`** pada header laporan bot, prompt AI, dan database session.
+     - Peringatan makro disertakan secara eksplisit agar trader menahan diri atau menunggu konfirmasi stabilitas harga Bitcoin sebelum mengeksekusi entry altcoin.
 
 ---
 
