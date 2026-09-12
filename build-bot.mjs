@@ -616,12 +616,56 @@ return [{ json: {
 }}];`,
 
   coinTechnical: TECH_SHARED + String.raw`
-const rawPrices = $('CoinGecko Market Chart').first().json.prices || [];
-const assetSymbol = $('Extract Coin ID').first().json.coinSymbol;
-` + TECH_CALC + String.raw`
-const btcGate = $('BTC Gate').first().json;
+const marketChart = $('CoinGecko Market Chart').first().json || {};
 const coinCtx = $('Extract Coin ID').first().json;
-return [{ json: { ...coinCtx, ...techResult, asset: coinCtx.coinSymbol, btcGate } }];`,
+const assetSymbol = coinCtx.coinSymbol || 'Koin';
+const cfg = $('Config').first().json;
+
+if (coinCtx.__error) {
+  return [{ json: {
+    technicalOk: false,
+    telegramMessage: coinCtx.telegramMessage,
+    chatId: coinCtx.chatId || cfg.telegramChatId,
+    botToken: coinCtx.botToken || cfg.botToken,
+  } }];
+}
+
+const rawPrices = marketChart.prices || [];
+if (!Array.isArray(rawPrices) || rawPrices.length === 0) {
+  const isRateLimit = marketChart.status?.error_code === 429 || String(marketChart.error || '').toLowerCase().includes('rate');
+  const msg = isRateLimit
+    ? '⏳ Layanan data CoinGecko sedang padat (rate limit). Silakan tunggu sekitar 30 detik lalu coba lagi.'
+    : '❌ Gagal mengambil riwayat harga untuk <b>' + assetSymbol + '</b> dari CoinGecko. Silakan coba lagi.';
+  return [{ json: {
+    technicalOk: false,
+    telegramMessage: msg,
+    chatId: cfg.telegramChatId,
+    botToken: cfg.botToken,
+  } }];
+}
+
+let calculated;
+try {
+  const runCalc = () => {
+` + TECH_CALC + String.raw`
+    return techResult;
+  };
+  calculated = runCalc();
+} catch (err) {
+  const isDataShort = err.message && err.message.includes('data tidak cukup');
+  const msg = isDataShort
+    ? '❌ Data candle harian <b>' + assetSymbol + '</b> belum cukup untuk dianalisis (minimal dibutuhkan 35 hari lilin harian untuk menghitung RSI, MACD, dan Bollinger Bands).'
+    : '❌ Terjadi kesalahan saat menghitung teknikal <b>' + assetSymbol + '</b>: ' + err.message;
+  return [{ json: {
+    technicalOk: false,
+    telegramMessage: msg,
+    chatId: cfg.telegramChatId,
+    botToken: cfg.botToken,
+  } }];
+}
+
+const btcGate = $('BTC Gate').first().json;
+return [{ json: { ...coinCtx, ...calculated, asset: coinCtx.coinSymbol, btcGate, technicalOk: true } }];`,
 
   parseNews: String.raw`const xml = ($input.first().json.data || '').toString();
 const itemBlocks = [...xml.matchAll(/<item>([\s\S]*?)<\/item>/g)];
@@ -2622,7 +2666,8 @@ const nodes = [
   // /coin — deep analysis
   httpGet('B2001', 'CoinGecko Search', "=https://api.coingecko.com/api/v3/search?query={{ encodeURIComponent($json.args) }}", 380, -800, { onError: 'continueRegularOutput' }),
   codeNode('B2002', 'Extract Coin ID', code.extractCoinId, 620, -800),
-  tgSend('B2008', 'Send Coin Error', 620, -960),
+  ifNode('B2020', 'Coin Found?', '={{ !$json.__error }}', 740, -800),
+  tgSend('B2008', 'Send Coin Error', 740, -960),
   httpGet('B2003', 'CoinGecko Market Chart',
     "=https://api.coingecko.com/api/v3/coins/{{ $json.coinId }}/market_chart?vs_currency={{ $('Config').first().json.quoteCurrency }}&days={{ $('Config').first().json.marketDays }}",
     860, -800, { onError: 'continueRegularOutput' }),
@@ -2631,6 +2676,7 @@ const nodes = [
     1100, -800, { onError: 'continueRegularOutput' }),
   codeNode('B2019', 'BTC Gate', code.btcGate, 1340, -800, 'Hitung BTC gate signal: bullish/bearish/neutral berdasarkan SMA20 + MACD'),
   codeNode('B2004', 'Coin Technical', code.coinTechnical, 1580, -800),
+  ifNode('B2021', 'Coin Technical OK?', '={{ $json.technicalOk }}', 1700, -800),
 
   // Real-time news via Google News RSS
   httpGetText('B2005', 'Fetch Google News',
@@ -2807,11 +2853,19 @@ const connections = {
   'Build Start':             { main: [[{ node: 'Send Start', type: 'main', index: 0 }]] },
   'Build Help':              { main: [[{ node: 'Send Help', type: 'main', index: 0 }]] },
   'CoinGecko Search':        { main: [[{ node: 'Extract Coin ID', type: 'main', index: 0 }]] },
-  'Extract Coin ID':         { main: [[{ node: 'CoinGecko Market Chart', type: 'main', index: 0 }], [{ node: 'Send Coin Error', type: 'main', index: 0 }]] },
+  'Extract Coin ID':         { main: [[{ node: 'Coin Found?', type: 'main', index: 0 }]] },
+  'Coin Found?':             { main: [
+    [{ node: 'CoinGecko Market Chart', type: 'main', index: 0 }],
+    [{ node: 'Send Coin Error', type: 'main', index: 0 }],
+  ] },
   'CoinGecko Market Chart':  { main: [[{ node: 'Fetch BTC Gate', type: 'main', index: 0 }]] },
   'Fetch BTC Gate':          { main: [[{ node: 'BTC Gate', type: 'main', index: 0 }]] },
   'BTC Gate':                { main: [[{ node: 'Coin Technical', type: 'main', index: 0 }]] },
-  'Coin Technical':          { main: [[{ node: 'Fetch Google News', type: 'main', index: 0 }]] },
+  'Coin Technical':          { main: [[{ node: 'Coin Technical OK?', type: 'main', index: 0 }]] },
+  'Coin Technical OK?':      { main: [
+    [{ node: 'Fetch Google News', type: 'main', index: 0 }],
+    [{ node: 'Send Coin Error', type: 'main', index: 0 }],
+  ] },
   'Fetch Google News':       { main: [[{ node: 'Parse News', type: 'main', index: 0 }]] },
   'Parse News':              { main: [[{ node: 'Prepare Read Prev', type: 'main', index: 0 }]] },
   'Prepare Read Prev':       { main: [[{ node: 'Read Previous Analysis', type: 'main', index: 0 }]] },
