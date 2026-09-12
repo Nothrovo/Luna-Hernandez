@@ -766,7 +766,7 @@ const geminiBody = {
 
 return [{ json: { geminiBody, coinSymbol: tech.coinSymbol, chatId: cfg.telegramChatId, botToken: cfg.botToken } }];`,
 
-  buildCoinReport: String.raw`const resp = $input.first().json;
+  buildCoinReport: TECH_SHARED + String.raw`const resp = $input.first().json;
 const tech = $('Coin Technical').first().json;
 const newsCtx = $('Parse News').first().json;
 const prevCtx = $('Parse Previous Analysis').first().json;

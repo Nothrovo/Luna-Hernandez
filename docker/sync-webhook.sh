@@ -39,7 +39,7 @@ while true; do
         echo "🌐 [AUTO-SYNC] Tunnel terverifikasi sehat! Mendaftarkan ke Telegram..."
         RESP=$(curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/setWebhook" \
           -H "Content-Type: application/json" \
-          -d "{\"url\":\"${TARGET_WEBHOOK}\",\"ip_address\":\"${CF_IP}\",\"drop_pending_updates\":true}")
+          -d "{\"url\":\"${TARGET_WEBHOOK}\",\"ip_address\":\"${CF_IP}\",\"drop_pending_updates\":false}")
         
         OK=$(echo "$RESP" | jq -r '.ok // false' 2>/dev/null || true)
         if [ "$OK" = "true" ]; then
