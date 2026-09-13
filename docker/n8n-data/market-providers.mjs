@@ -57,7 +57,7 @@ function isoDate(milliseconds) {
   return new Date(milliseconds).toISOString();
 }
 
-export function buildAlpacaBarsUrl(symbol, timeframe, { start, end, limit = 1000 } = {}) {
+export function buildAlpacaBarsUrl(symbol, timeframe, { start, end, limit = 1000, sort = 'desc' } = {}) {
   const normalized = String(symbol || '').toUpperCase();
   const bucketMs = timeframe === '1Day' ? 15 * 60_000 : 5 * 60_000;
   const roundedStart = start != null ? Math.floor(start / bucketMs) * bucketMs : start;
@@ -69,7 +69,7 @@ export function buildAlpacaBarsUrl(symbol, timeframe, { start, end, limit = 1000
     limit: String(limit),
     adjustment: 'all',
     feed: 'iex',
-    sort: 'asc',
+    sort,
   });
   return `https://data.alpaca.markets/v2/stocks/${encodeURIComponent(normalized)}/bars?${query}`;
 }
