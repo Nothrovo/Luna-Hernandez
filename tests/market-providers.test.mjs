@@ -188,3 +188,16 @@ test('futures recommendation provider prefilters liquidity before bounded chart 
   assert.equal(calls.filter(url => url.includes('/openInterestHist')).length, 3);
   assert.equal(calls.some(url => /order|account/i.test(url)), false);
 });
+
+test('futures recommendation provider reports BINANCE_UNAVAILABLE when universe fetch fails', async () => {
+  await assert.rejects(
+    fetchFuturesRecommendations({
+      fetchJson: async () => {
+        throw new Error('fetch failed');
+      },
+      nowMs: Date.UTC(2026, 8, 11, 12),
+    }),
+    error => error.code === 'BINANCE_UNAVAILABLE' && error.retryable === true,
+  );
+});
+

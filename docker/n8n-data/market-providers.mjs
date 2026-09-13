@@ -219,7 +219,7 @@ export async function fetchFuturesMarketAnalysis(symbol, {
       fetchJson(`https://fapi.binance.com/futures/data/openInterestHist?symbol=${encodeURIComponent(normalizedSymbol)}&period=1h&limit=30`, { headers: publicHeaders }),
     ]);
   } catch (error) {
-    if (error instanceof MarketAnalysisError) throw error;
+    if (error instanceof MarketAnalysisError && error.code !== 'PROVIDER_UNAVAILABLE') throw error;
     throw new MarketAnalysisError('BINANCE_UNAVAILABLE', error?.message || 'Gagal mengambil data Binance Futures', { retryable: true });
   }
   const [m15, h1, h4, d1, premiumIndex, fundingHistory, openInterestHistory] = payloads;
@@ -349,7 +349,7 @@ export async function fetchFuturesRecommendations({
       fetchJson('https://fapi.binance.com/fapi/v1/premiumIndex', { headers }),
     ]);
   } catch (error) {
-    if (error instanceof MarketAnalysisError) throw error;
+    if (error instanceof MarketAnalysisError && error.code !== 'PROVIDER_UNAVAILABLE') throw error;
     throw new MarketAnalysisError('BINANCE_UNAVAILABLE', error?.message || 'Gagal mengambil universe Binance Futures', { retryable: true });
   }
   if (!exchangeInfo || !Array.isArray(exchangeInfo.symbols) || !Array.isArray(tickers) || !Array.isArray(premiums)) {

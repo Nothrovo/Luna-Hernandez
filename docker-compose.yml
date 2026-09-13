@@ -8,6 +8,9 @@ services:
     restart: unless-stopped
     ports:
       - "5678:5678"
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
     environment:
       GENERIC_TIMEZONE: Asia/Jakarta
       TZ: Asia/Jakarta
@@ -43,6 +46,9 @@ services:
     image: cloudflare/cloudflared:latest
     container_name: midas-tunnel
     restart: unless-stopped
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
     command: tunnel --no-autoupdate --url http://n8n:5678
     depends_on:
       - n8n
@@ -51,6 +57,9 @@ services:
     image: docker:cli
     container_name: midas-webhook-sync
     restart: unless-stopped
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
     depends_on:
       - tunnel
     volumes:
