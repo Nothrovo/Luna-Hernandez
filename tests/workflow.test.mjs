@@ -113,6 +113,9 @@ test('/rec supports coin, stock, and futures while plain /rec defaults to coin',
 
   const recType = workflow.nodes.find(node => node.name === 'Recommendation Type');
   assert.deepEqual(recType.parameters.rules.values.map(rule => rule.outputKey), ['coin', 'stock', 'futures']);
+  assert.equal(recType.parameters.options?.fallbackOutput, 'extra');
+  const router = workflow.nodes.find(node => node.name === 'Command Router');
+  assert.equal(router.parameters.options?.fallbackOutput, 'extra');
   const formatCode = workflow.nodes.find(node => node.name === 'Format Market Recommendations').parameters.jsCode;
   assert.match(formatCode, /executionAllowed/);
   assert.doesNotMatch(formatCode, /Gemini|geminiBody/);
@@ -128,7 +131,11 @@ test('/rec preparation and futures formatter execute with n8n-compatible payload
   }));
   assert.equal((await runPrepare(''))[0].json.recommendationMode, 'coin');
   assert.match((await runPrepare('stock'))[0].json.dbCmd, /recommend-stock$/);
+  assert.match((await runPrepare('stocks'))[0].json.dbCmd, /recommend-stock$/);
+  assert.match((await runPrepare('saham'))[0].json.dbCmd, /recommend-stock$/);
   assert.match((await runPrepare('futures'))[0].json.dbCmd, /recommend-futures$/);
+  assert.match((await runPrepare('future'))[0].json.dbCmd, /recommend-futures$/);
+  assert.equal((await runPrepare('coins'))[0].json.recommendationMode, 'coin');
   assert.equal((await runPrepare('forex'))[0].json.recommendationMode, 'invalid');
 
   const formatCode = workflow.nodes.find(node => node.name === 'Format Market Recommendations').parameters.jsCode;

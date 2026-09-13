@@ -271,6 +271,9 @@ if (command === 'recommendation' || command === 'rekomendasi') command = 'rec';
 if (command === 'status') command = 'stat';
 if (command === 'berita' || command === 'kabar') command = 'news';
 if (command === 'risk' || command === 'resiko') command = 'risk';
+if (command === 'stocks' || command === 'saham') command = 'stock';
+if (command === 'coins' || command === 'koin') command = 'coin';
+if (command === 'future') command = 'futures';
 
 let coinArg = '', modalArg = 100000, porsiArg = '100%', invalidModal = null;
 if (args) {
@@ -1711,7 +1714,8 @@ return [{ json: { telegramMessage: msg, chatId: cfg.telegramChatId, botToken: cf
   prepareRecommendation: String.raw`const update = $('Parse Incoming Message').first().json;
 const cfg = $('Config').first().json;
 const requested = (String(update.args || '').trim().split(/\s+/)[0].toLowerCase() || 'coin');
-const recommendationMode = /^(coin|stock|futures)$/.test(requested) ? requested : 'invalid';
+const normalized = requested === 'stocks' || requested === 'saham' ? 'stock' : (requested === 'future' ? 'futures' : (requested === 'coins' || requested === 'crypto' ? 'coin' : requested));
+const recommendationMode = /^(coin|stock|futures)$/.test(normalized) ? normalized : 'invalid';
 const dbCmd = recommendationMode === 'stock' || recommendationMode === 'futures'
   ? 'node /home/node/.n8n/market_analysis_cli.mjs recommend-' + recommendationMode
   : '';
@@ -2646,7 +2650,7 @@ const nodes = [
           { conditions: { conditions: [{ leftValue: '={{ $json.command }}', rightValue: 'risk', operator: { type: 'string', operation: 'equals' } }], combinator: 'and' }, renameOutput: true, outputKey: 'risk' },
         ],
       },
-      fallbackOutput: 'extra',
+      options: { fallbackOutput: 'extra' },
     },
     id: 'W0007',
     name: 'Command Router',
@@ -2783,7 +2787,7 @@ const nodes = [
           { conditions: { conditions: [{ leftValue: '={{ $json.recommendationMode }}', rightValue: 'futures', operator: { type: 'string', operation: 'equals' } }], combinator: 'and' }, renameOutput: true, outputKey: 'futures' },
         ],
       },
-      fallbackOutput: 'extra',
+      options: { fallbackOutput: 'extra' },
     },
     id: 'R1002',
     name: 'Recommendation Type',
