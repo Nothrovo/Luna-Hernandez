@@ -7,7 +7,7 @@ services:
     container_name: midas-n8n
     restart: unless-stopped
     ports:
-      - "5678:5678"
+      - "127.0.0.1:5678:5678"
     dns:
       - 8.8.8.8
       - 1.1.1.1
@@ -24,6 +24,8 @@ services:
       EXECUTIONS_DATA_SAVE_MANUAL_EXECUTIONS: "true"
       N8N_BLOCK_ENV_ACCESS_IN_NODE: "false"
       GEMINI_API_KEY: "${GEMINI_API_KEY}"
+      WEBHOOK_SECRET: "${WEBHOOK_SECRET}"
+      BOT_TOKEN: "${BOT_TOKEN}"
       ALPACA_API_KEY_ID: "${ALPACA_API_KEY_ID:-}"
       ALPACA_API_SECRET: "${ALPACA_API_SECRET:-}"
       SEC_USER_AGENT: "${SEC_USER_AGENT:-Midas-Luna contact@example.com}"
@@ -66,5 +68,6 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./docker/sync-webhook.sh:/usr/local/bin/sync-webhook.sh:ro
     environment:
-      BOT_TOKEN: "[REDACTED_TELEGRAM_TOKEN]"
+      BOT_TOKEN: ${BOT_TOKEN}
+      WEBHOOK_SECRET: ${WEBHOOK_SECRET}
     entrypoint: ["/bin/sh", "/usr/local/bin/sync-webhook.sh"]

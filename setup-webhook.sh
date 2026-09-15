@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -e
 
-TOKEN="[REDACTED_TELEGRAM_TOKEN]"
+TOKEN=${BOT_TOKEN}
 
 echo "🔍 Mencari URL Cloudflare Tunnel..."
 for i in {1..15}; do
@@ -22,7 +22,7 @@ echo "🔗 Mendaftarkan Webhook ke Telegram API..."
 
 RESP=$(curl -s -X POST "https://api.telegram.org/bot${TOKEN}/setWebhook" \
   -H "Content-Type: application/json" \
-  -d "{\"url\": \"${URL}/webhook/midas-bot\", \"drop_pending_updates\": true}")
+  -d "{\"url\": \"${URL}/webhook/midas-bot\", \"secret_token\": \"${WEBHOOK_SECRET}\", \"drop_pending_updates\": true}")
 
 OK=$(echo "$RESP" | python3 -c "import json,sys; print(json.load(sys.stdin).get('ok', False))" 2>/dev/null || echo "false")
 

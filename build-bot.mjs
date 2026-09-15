@@ -220,7 +220,7 @@ const code = {
   json: {
     timezone: 'Asia/Jakarta',
     telegramChatId: '1536791393',
-    botToken: '[REDACTED_TELEGRAM_TOKEN]',
+    botToken: $env.get('BOT_TOKEN'),
     ollamaBaseUrl: 'http://host.docker.internal:11434',
     ollamaModel: 'qwen3.5:2b',
     sqlitePath: '/home/node/.n8n/crypto_decision_support.sqlite',
@@ -237,6 +237,16 @@ const code = {
 
 const cfg = $('Config').first().json;
 const raw = $('Telegram Webhook').first().json;
+
+// Extract headers for secret validation
+const headers = raw.headers || {};
+const secretToken = headers['x-telegram-bot-api-secret-token'];
+const expectedToken = $env.get('WEBHOOK_SECRET');
+
+if (expectedToken && secretToken !== expectedToken) {
+  // Invalid or missing secret token, ignore request
+  return [{ json: { hasCommand: false, command: '__none__', error: 'INVALID_SECRET' } }];
+}
 
 // Ekstrak pesan Telegram dari berbagai struktur webhook n8n
 const body = raw.body || raw;
@@ -255,14 +265,17 @@ if (String(senderChatId) !== String(cfg.telegramChatId)) {
 const text = msg.text.trim();
 let command = '__none__', args = '';
 
+// Remove shell metacharacters to prevent shell injection
+const shellSafe = (str) => String(str || '').replace(/[;&|\x60$()<>\\"']/g, '').trim();
+
 if (text.startsWith('/')) {
   const parts = text.slice(1).split(/\s+/);
-  command = parts[0].toLowerCase().split('@')[0];
-  args = parts.slice(1).join(' ').trim();
+  command = shellSafe(parts[0].toLowerCase().split('@')[0]);
+  args = shellSafe(parts.slice(1).join(' '));
 } else {
   // Jika user mengetik pesan biasa tanpa tanda '/', otomatis anggap sebagai /ask
   command = 'ask';
-  args = text;
+  args = shellSafe(text);
 }
 
 // Alias command
