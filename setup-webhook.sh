@@ -1,7 +1,13 @@
 #!/usr/bin/env bash
 set -e
 
-TOKEN=${BOT_TOKEN}
+if [ -z "$BOT_TOKEN" ] && [ -f .env ]; then
+  set -a
+  . .env
+  set +a
+fi
+
+TOKEN="${BOT_TOKEN}"
 
 echo "🔍 Mencari URL Cloudflare Tunnel..."
 for i in {1..15}; do

@@ -220,7 +220,7 @@ const code = {
   json: {
     timezone: 'Asia/Jakarta',
     telegramChatId: '1536791393',
-    botToken: $env.get('BOT_TOKEN'),
+    botToken: (typeof $env !== 'undefined' && $env.BOT_TOKEN) || (typeof process !== 'undefined' && process.env.BOT_TOKEN) || '',
     ollamaBaseUrl: 'http://host.docker.internal:11434',
     ollamaModel: 'qwen3.5:2b',
     sqlitePath: '/home/node/.n8n/crypto_decision_support.sqlite',
@@ -240,8 +240,8 @@ const raw = $('Telegram Webhook').first().json;
 
 // Extract headers for secret validation
 const headers = raw.headers || {};
-const secretToken = headers['x-telegram-bot-api-secret-token'];
-const expectedToken = $env.get('WEBHOOK_SECRET');
+const secretToken = headers['x-telegram-bot-api-secret-token'] || headers['X-Telegram-Bot-Api-Secret-Token'];
+const expectedToken = (typeof $env !== 'undefined' && $env.WEBHOOK_SECRET) || (typeof process !== 'undefined' && process.env.WEBHOOK_SECRET) || '';
 
 if (expectedToken && secretToken !== expectedToken) {
   // Invalid or missing secret token, ignore request
@@ -740,7 +740,7 @@ return [{ json: { btcGate: gate, btcPrice: btcClose, btcRsi: Number(btcRsi.toFix
   readPrevAnalysis: String.raw`const sym = $('Extract Coin ID').first().json.coinSymbol.replace(/'/g,"''");
 const p = $('Config').first().json.sqlitePath;
 const sql = "SELECT tanggal, waktu, keputusan, harga, skor_teknikal, ringkasan FROM coin_sessions WHERE simbol='" + sym + "' AND tipe='coin' ORDER BY tanggal DESC, id DESC LIMIT 5;";
-const dbCmd = "sqlite3 -separator '|' '" + p.replace(/'/g,"'\"'\"'") + "' \"" + sql + "\"";
+const dbCmd = "sqlite3 -separator '|' '" + p.replace(/'/g, "'\\''") + "' '" + sql.replace(/'/g, "'\\''") + "'";
 return [{ json: { dbCmd } }];`,
 
   parsePrevAnalysis: String.raw`const raw = ($input.first().json.stdout || '').trim();
@@ -925,7 +925,7 @@ const waktu = now.toLocaleTimeString('id-ID', { timeZone: 'Asia/Jakarta', hour: 
 const sql = "INSERT INTO coin_sessions (tanggal, waktu, simbol, tipe, harga, keputusan, skor_teknikal, ringkasan, konten) " +
   "VALUES ('" + tanggal + "','" + waktu + "','" + (d.sqlSymbol || '').replace(/'/g, "''") + "','coin'," +
   (d.sqlHarga || 0) + ",'" + (d.sqlKeputusan || '') + "'," + (d.sqlSkor || 0) + ",'" + (d.sqlRingkasan || '') + "','" + (d.sqlKonten || '') + "');";
-const dbCmd = "sqlite3 '" + p.replace(/'/g, "'\"'\"'") + "' \"" + sql + "\"";
+const dbCmd = "sqlite3 '" + p.replace(/'/g, "'\\''") + "' '" + sql.replace(/'/g, "'\\''") + "'";
 return [{ json: { ...d, dbCmd } }];`,
 
   // ── /ask (with Live Google News search + SQLite memory) ──
@@ -946,7 +946,7 @@ return [{ json: { ...update, askNews: articles } }];`,
 
   readRecentSessions: String.raw`const p = $('Config').first().json.sqlitePath;
 const sql = "SELECT tanggal, waktu, simbol, tipe, keputusan, skor_teknikal, ringkasan FROM coin_sessions ORDER BY tanggal DESC, id DESC LIMIT 15;";
-const dbCmd = "sqlite3 -separator '|' '" + p.replace(/'/g, "'\"'\"'") + "' \"" + sql + "\"";
+const dbCmd = "sqlite3 -separator '|' '" + p.replace(/'/g, "'\\''") + "' '" + sql.replace(/'/g, "'\\''") + "'";
 return [{ json: { dbCmd } }];`,
 
   buildAskWithContext: String.raw`const raw = ($input.first().json.stdout || '').trim();
@@ -1045,7 +1045,7 @@ const tanggal = now.toISOString().slice(0, 10);
 const waktu = now.toLocaleTimeString('id-ID', { timeZone: 'Asia/Jakarta', hour: '2-digit', minute: '2-digit' });
 const sql = "INSERT INTO coin_sessions (tanggal, waktu, simbol, tipe, ringkasan, konten) VALUES ('" +
   tanggal + "','" + waktu + "','ASK','ask','" + (d.sqlQuestion || '') + "','" + (d.sqlAnswer || '') + "');";
-const dbCmd = "sqlite3 '" + p.replace(/'/g, "'\"'\"'") + "' \"" + sql + "\"";
+const dbCmd = "sqlite3 '" + p.replace(/'/g, "'\\''") + "' '" + sql.replace(/'/g, "'\\''") + "'";
 return [{ json: { ...d, dbCmd } }];`,
 
   // ── /portfolio (Dynamic Upgrade) ──

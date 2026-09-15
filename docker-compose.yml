@@ -68,6 +68,6 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./docker/sync-webhook.sh:/usr/local/bin/sync-webhook.sh:ro
     environment:
-      BOT_TOKEN: ${BOT_TOKEN}
-      WEBHOOK_SECRET: ${WEBHOOK_SECRET}
+      BOT_TOKEN: "${BOT_TOKEN}"
+      WEBHOOK_SECRET: "${WEBHOOK_SECRET}"
     entrypoint: ["/bin/sh", "/usr/local/bin/sync-webhook.sh"]
